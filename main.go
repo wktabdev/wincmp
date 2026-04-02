@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -32,6 +33,7 @@ import (
 	"wincmp/internal/hosts"
 	"wincmp/internal/port"
 	"wincmp/internal/process"
+	"wincmp/internal/resource"
 	"wincmp/internal/scanner"
 	"wincmp/internal/singleinstance"
 
@@ -49,19 +51,20 @@ import (
 
 // 全域變數
 var (
-	sysLog       = binding.NewString()
-	caddyLog     = binding.NewString()
-	dbLog        = binding.NewString()
-	phpLog       = binding.NewString()
-	nodeLog      = binding.NewString()
-	logEntries   map[string]*container.Scroll
-	logTabs      *container.AppTabs // 用於切換分頁
-	procMgr      *process.Manager
-	scanRes      *scanner.ScanResult
-	appCfg       *config.WincmpConfig
-	baseDir      string      // 專案根目錄
-	isZenityOpen atomic.Bool // 防止重複開啟檔案選擇器
-	myApp        fyne.App    // Fyne App 實例，用於主題切換
+	sysLog          = binding.NewString()
+	caddyLog        = binding.NewString()
+	dbLog           = binding.NewString()
+	phpLog          = binding.NewString()
+	nodeLog         = binding.NewString()
+	logEntries      map[string]*container.Scroll
+	logTabs         *container.AppTabs // 用於切換分頁
+	procMgr         *process.Manager
+	resourceMonitor *resource.Monitor
+	scanRes         *scanner.ScanResult
+	appCfg          *config.WincmpConfig
+	baseDir         string      // 專案根目錄
+	isZenityOpen    atomic.Bool // 防止重複開啟檔案選擇器
+	myApp           fyne.App    // Fyne App 實例，用於主題切換
 
 	// 日誌寫入器 (lumberjack 全域實例)
 	nodeLogWriter *lumberjack.Logger
@@ -72,12 +75,123 @@ var (
 	lastSwitch  time.Time
 	tabTimer    *time.Timer
 
+	// 主分頁切換鎖：防止 Tab 內容載入時切換到其他 Tab
+	mainTabLock      sync.Mutex
+	isMainTabLoading atomic.Bool
+
 	// 主分頁
 	mainTabs *container.AppTabs
 
 	// PHP Row UI 組件映射 (key: MajorMin, e.g. "8.2")
 	phpRowUI map[string]*phpRowComponents
 )
+
+const (
+	maxLogLines     = 500
+	maxLogBytes     = 200 * 1024
+	logTruncatedMsg = "| 日誌已截斷，僅保留最後 500 行 / 200KB |\n"
+)
+
+// dynamicTooltipLabel 是一個自製的動態 Tooltip 標籤，支援在顯示期間即時刷新內容
+type dynamicTooltipLabel struct {
+	widget.Label
+	hovered bool
+	window  fyne.Window
+	popup   *widget.PopUp
+	content *widget.Label
+	cancel  context.CancelFunc // 用於處理顯示延遲
+}
+
+func newDynamicTooltipLabel(text string, w fyne.Window) *dynamicTooltipLabel {
+	l := &dynamicTooltipLabel{window: w}
+	l.Text = text
+	l.Alignment = fyne.TextAlignLeading
+	l.ExtendBaseWidget(l)
+	return l
+}
+
+func (l *dynamicTooltipLabel) MouseIn(e *desktop.MouseEvent) {
+	l.hovered = true
+	
+	// 加入 500ms 延遲顯示，避免滑鼠快速經過時狂閃
+	ctx, cancel := context.WithCancel(context.Background())
+	l.cancel = cancel
+	
+	go func() {
+		time.Sleep(500 * time.Millisecond)
+		select {
+		case <-ctx.Done():
+			return
+		default:
+			fyne.Do(func() {
+				if !l.hovered {
+					return
+				}
+				if l.popup == nil {
+					l.content = widget.NewLabel("")
+					l.content.TextStyle = fyne.TextStyle{Monospace: true}
+					l.popup = widget.NewPopUp(container.NewPadded(l.content), l.window.Canvas())
+				}
+				
+				// 取得全域座標來定位
+				pos := e.AbsolutePosition
+				pos.Y -= l.popup.MinSize().Height + 5 // 顯示在滑鼠上方
+				if pos.Y < 0 {
+					pos.Y = e.AbsolutePosition.Y + 25 // 空間不足就顯示在下方
+				}
+				l.popup.ShowAtPosition(pos)
+			})
+		}
+	}()
+}
+
+func (l *dynamicTooltipLabel) MouseOut() {
+	l.hovered = false
+	if l.cancel != nil {
+		l.cancel()
+	}
+	if l.popup != nil {
+		l.popup.Hide()
+	}
+}
+
+func (l *dynamicTooltipLabel) MouseMoved(e *desktop.MouseEvent) {}
+
+func (l *dynamicTooltipLabel) SetToolTip(text string) {
+	if l.content != nil {
+		l.content.SetText(text)
+		// 如果正在顯示，重新整理大小以適應內容
+		if l.popup != nil && l.hovered {
+			l.popup.Refresh()
+		}
+	}
+}
+
+func (l *dynamicTooltipLabel) IsHovered() bool {
+	return l.hovered
+}
+
+func cleanupOldLogs(retention int) {
+	if retention <= 0 {
+		return
+	}
+	logDir := filepath.Join(baseDir, "logs")
+	cutoff := time.Now().AddDate(0, 0, -retention)
+
+	patterns := []string{"wincmp-*.log", "node-*.log", "error-*.log"}
+	for _, pattern := range patterns {
+		files, _ := filepath.Glob(filepath.Join(logDir, pattern))
+		for _, f := range files {
+			info, err := os.Stat(f)
+			if err != nil {
+				continue
+			}
+			if info.ModTime().Before(cutoff) {
+				os.Remove(f)
+			}
+		}
+	}
+}
 
 func initLogWriters() {
 	logDir := filepath.Join(baseDir, "logs")
@@ -146,7 +260,36 @@ func addLog(category string, msg string) {
 
 	if logSource != nil {
 		oldText, _ := logSource.Get()
-		logSource.Set(oldText + newText)
+
+		oldText = strings.Replace(oldText, logTruncatedMsg, "", 1)
+
+		totalLines := strings.Count(oldText, "\n")
+		totalBytes := len(oldText) + len(newText)
+
+		if totalLines > maxLogLines || totalBytes > maxLogBytes {
+			keepBytes := maxLogBytes - len(newText) - len(logTruncatedMsg)
+			if keepBytes < 0 {
+				keepBytes = 0
+			}
+
+			trimmed := oldText
+			if len(trimmed) > keepBytes {
+				trimmed = trimmed[len(trimmed)-keepBytes:]
+				if idx := strings.Index(trimmed, "\n"); idx >= 0 && idx < 100 {
+					trimmed = trimmed[idx+1:]
+				}
+			}
+
+			allLines := strings.Split(trimmed, "\n")
+			if len(allLines) > maxLogLines {
+				allLines = allLines[len(allLines)-maxLogLines:]
+				trimmed = strings.Join(allLines, "\n")
+			}
+
+			logSource.Set(logTruncatedMsg + trimmed + newText)
+		} else {
+			logSource.Set(oldText + newText)
+		}
 
 		if logEntries != nil {
 			if scroll, ok := logEntries[catKey]; ok && scroll != nil {
@@ -371,6 +514,9 @@ func saveAndQuit(myApp fyne.App) {
 	addLog("system", "正在儲存狀態與關閉所有服務...")
 	saveLastServiceState()
 	procMgr.StopAll()
+	if resourceMonitor != nil {
+		resourceMonitor.Stop()
+	}
 	myApp.Quit()
 }
 
@@ -467,6 +613,9 @@ func main() {
 	// --- 建立程序管理器 ---
 	procMgr = process.NewManager(baseDir, addLog, addErrorLog)
 
+	// --- 建立資源監控器（顯示 WinCMP 主程序 + 可選 Stack Total） ---
+	resourceMonitor = resource.NewAppResourceMonitor(procMgr)
+
 	// --- 掃描已安裝的服務版本 ---
 	addLog("system", "掃描 ./bin 目錄中的服務版本...")
 	scanRes, err = scanner.ScanBinDir(baseDir)
@@ -551,6 +700,11 @@ func main() {
 		addLog("system", fmt.Sprintf("  ✓ 設定檔已載入 (%d 個專案)", len(appCfg.Projects)))
 	}
 
+	cleanupOldLogs(appCfg.Global.MaxLogRetention)
+
+	// --- 預計算 Projects 的 ConfigExists 狀態（提升 UI 渲染效能）---
+	appCfg.RefreshConfigExists(baseDir)
+
 	// --- 套用已儲存的主題設定 ---
 	applyTheme(appCfg.Global.Theme)
 
@@ -620,6 +774,8 @@ func main() {
 		checkPHPForProjects(myWindow)
 	}
 
+	resourceStatusLabel := newDynamicTooltipLabel("WinCMP RAM: -- MB | CPU: -- %", myWindow)
+	resourceStatusLabel.SetToolTip("WinCMP 資源監控\n\n載入中...")
 	logTitle := widget.NewLabelWithStyle("Terminal Logs", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
 	caddyLogBtn := widget.NewButtonWithIcon("Caddy.log", theme.DocumentIcon(), func() {
 		openLocalPath(filepath.Join(baseDir, "logs", "caddy.log"))
@@ -630,8 +786,7 @@ func main() {
 	wincmpLogBtn := widget.NewButtonWithIcon("Wincmp.log", theme.DocumentIcon(), func() {
 		openLatestLog("wincmp")
 	})
-	logBtnWrap := container.NewHBox(caddyLogBtn, nodeLogBtn, wincmpLogBtn)
-	logTopBar := container.NewBorder(nil, nil, nil, logBtnWrap, logTitle)
+	logTopBar := container.NewHBox(logTitle, caddyLogBtn, nodeLogBtn, wincmpLogBtn, layout.NewSpacer(), resourceStatusLabel)
 	logPanel := container.NewBorder(
 		logTopBar, nil, nil, nil, logTabs,
 	)
@@ -654,6 +809,9 @@ func main() {
 		container.NewTabItemWithIcon("Settings", theme.SettingsIcon(), settingsContent),
 	)
 	mainTabs.OnSelected = func(tab *container.TabItem) {
+		if isMainTabLoading.Load() {
+			return
+		}
 		if tab.Text == "DB Explorer" {
 			refreshDBExplorer()
 		} else if tab.Text == "Node.js" {
@@ -679,6 +837,9 @@ func main() {
 	})
 
 	myWindow.SetContent(fynetooltip.AddWindowToolTipLayer(mainLayout, myWindow.Canvas()))
+
+	// 啟動資源監控 Goroutine（每秒更新 status label）
+	go resourceMonitor.Start(resourceStatusLabel)
 
 	defer func() {
 		if nodeLogWriter != nil {
@@ -1425,11 +1586,12 @@ func createMariaDBRow(win fyne.Window, info scanner.ServiceInfo) fyne.CanvasObje
 	var actionBtn *widget.Button
 
 	isExternal := appCfg.Global.MariaDBExternal
-	serviceKey := process.MariaDBExternalServiceKey
+	serviceKey := process.MariaDBServiceKey(info.Version)
 	serviceName := "MariaDB"
 	versionLabel := info.Version
 
 	if isExternal {
+		serviceKey = process.MariaDBExternalServiceKey
 		serviceName = appCfg.Global.MariaDBType
 		versionLabel = "External"
 	}
@@ -2104,11 +2266,7 @@ func createProjectsTab(win fyne.Window) fyne.CanvasObject {
 			// State (Running/Stopped)
 			// 判定：可用 Caddy config 中存在 且 Caddy 正在運行
 			caddyRunning := procMgr.IsRunning("caddy")
-			caddyConfigPath := filepath.Join(baseDir, "conf", "sites", proj.Name+".caddy")
-			configExists := false
-			if _, err := os.Stat(caddyConfigPath); err == nil {
-				configExists = true
-			}
+			configExists := proj.ConfigExists // 使用預計算的快取值
 
 			stateText := "Stopped"
 			var stateColor color.Color = color.NRGBA{R: 158, G: 158, B: 158, A: 255} // Light Gray
@@ -2161,6 +2319,7 @@ func createProjectsTab(win fyne.Window) fyne.CanvasObject {
 				showProjectEditor(win, proj, func() {
 					appCfg.Save(filepath.Join(baseDir, "conf", "wincmp.json"))
 					generateCaddyfiles()
+					appCfg.RefreshConfigExists(baseDir)
 					list.Refresh()
 					addLog("system", fmt.Sprintf("✅ 已更新專案: %s", proj.Name))
 				})
@@ -2171,6 +2330,7 @@ func createProjectsTab(win fyne.Window) fyne.CanvasObject {
 						appCfg.Projects = append(appCfg.Projects[:i], appCfg.Projects[i+1:]...)
 						appCfg.Save(filepath.Join(baseDir, "conf", "wincmp.json"))
 						generateCaddyfiles()
+						appCfg.RefreshConfigExists(baseDir)
 						list.Refresh()
 						addLog("system", fmt.Sprintf("✅ 已移除專案: %s", proj.Name))
 					}
@@ -2227,6 +2387,7 @@ func createProjectsTab(win fyne.Window) fyne.CanvasObject {
 				appCfg.Save(filepath.Join(baseDir, "conf", "wincmp.json"))
 				generateCaddyfiles()
 				triggerHostsUpdate()
+				appCfg.RefreshConfigExists(baseDir)
 
 				// 更新 UI
 				list.Refresh()
@@ -2371,7 +2532,18 @@ func createDatabaseExplorerTab() (fyne.CanvasObject, func()) {
 
 	// queryDatabases 查詢所有 Schema
 	queryDatabases := func() ([]string, error) {
-		db, err := sql.Open("mysql", "root@tcp(127.0.0.1:3306)/")
+		port := appCfg.Global.MariaDBPort
+		if port <= 0 {
+			port = 3306
+		}
+		user := appCfg.Global.MariaDBUser
+		if user == "" {
+			user = "root"
+		}
+		password := appCfg.Global.MariaDBPassword
+		dsn := fmt.Sprintf("%s:%s@tcp(127.0.0.1:%d)/", user, password, port)
+
+		db, err := sql.Open("mysql", dsn)
 		if err != nil {
 			return nil, err
 		}
@@ -2397,7 +2569,18 @@ func createDatabaseExplorerTab() (fyne.CanvasObject, func()) {
 
 	// queryTables 查詢指定 Schema 的資料表
 	queryTables := func(schema string) ([]string, error) {
-		db, err := sql.Open("mysql", "root@tcp(127.0.0.1:3306)/"+schema)
+		port := appCfg.Global.MariaDBPort
+		if port <= 0 {
+			port = 3306
+		}
+		user := appCfg.Global.MariaDBUser
+		if user == "" {
+			user = "root"
+		}
+		password := appCfg.Global.MariaDBPassword
+		dsn := fmt.Sprintf("%s:%s@tcp(127.0.0.1:%d)/%s", user, password, port, schema)
+
+		db, err := sql.Open("mysql", dsn)
 		if err != nil {
 			return nil, err
 		}
@@ -2430,6 +2613,9 @@ func createDatabaseExplorerTab() (fyne.CanvasObject, func()) {
 	}
 
 	isMariaDBRunning := func() bool {
+		if appCfg.Global.MariaDBExternal {
+			return procMgr.IsRunning(process.MariaDBExternalServiceKey)
+		}
 		for _, info := range scanRes.MariaDBList {
 			if procMgr.IsRunning(process.MariaDBServiceKey(info.Version)) {
 				return true
@@ -2443,41 +2629,55 @@ func createDatabaseExplorerTab() (fyne.CanvasObject, func()) {
 	notRunningMsg.Wrapping = fyne.TextWrapWord
 	notRunningMsg.Alignment = fyne.TextAlignCenter
 	var notRunningBox *fyne.Container
+	var loadingIndicator *widget.ProgressBarInfinite
+	var dbTabLock sync.Mutex
 
 	refreshUI := func() {
 		if !isMariaDBRunning() {
-			split.Hide()
-			if notRunningBox != nil {
-				notRunningBox.Show()
-			}
-			//statusLabel.SetText("MariaDB 未運行")
-			addLog("system", "DB Explorer: MariaDB 未運行")
+			fyne.Do(func() {
+				split.Hide()
+				if notRunningBox != nil {
+					notRunningBox.Show()
+				}
+				loadingIndicator.Hide()
+				isMainTabLoading.Store(false)
+				addLog("system", "DB Explorer: MariaDB 未運行")
+			})
 			return
 		}
 
-		// MariaDB 運行中
-		if notRunningBox != nil {
-			notRunningBox.Hide()
-		}
-		split.Show()
-		statusLabel.SetText("已連線")
-
-		databases, err := queryDatabases()
-		if err != nil {
-			statusLabel.SetText(fmt.Sprintf("連線失敗: %v", err))
-			addLog("system", fmt.Sprintf("DB Explorer: 連線失敗 - %v", err))
+		fyne.Do(func() {
+			loadingIndicator.Show()
+			statusLabel.SetText("連線中...")
 			split.Hide()
-			notRunningMsg.SetText(fmt.Sprintf("⚠️ 無法連線到 MariaDB\n\n錯誤: %v\n\n請確認 MariaDB 已正常啟動並運行中。", err))
 			if notRunningBox != nil {
-				notRunningBox.Show()
+				notRunningBox.Hide()
 			}
-			return
-		}
+		})
 
-		schemaListData.Set(databases)
-		tableHeader.SetText("選擇左側的資料庫以檢視資料表")
-		tableListData.Set([]string{})
-		addLog("system", fmt.Sprintf("DB Explorer: 已載入 %d 個資料庫", len(databases)))
+		go func() {
+			databases, err := queryDatabases()
+			fyne.Do(func() {
+				loadingIndicator.Hide()
+				isMainTabLoading.Store(false)
+				if err != nil {
+					statusLabel.SetText(fmt.Sprintf("連線失敗: %v", err))
+					addLog("system", fmt.Sprintf("DB Explorer: 連線失敗 - %v", err))
+					notRunningMsg.SetText(fmt.Sprintf("⚠️ 無法連線到 MariaDB\n\n錯誤: %v\n\n請確認 MariaDB 已正常啟動並運行中。", err))
+					if notRunningBox != nil {
+						notRunningBox.Show()
+					}
+					return
+				}
+
+				split.Show()
+				statusLabel.SetText("已連線")
+				schemaListData.Set(databases)
+				tableHeader.SetText("選擇左側的資料庫以檢視資料表")
+				tableListData.Set([]string{})
+				addLog("system", fmt.Sprintf("DB Explorer: 已載入 %d 個資料庫", len(databases)))
+			})
+		}()
 	}
 
 	// --- 2. 建立連線提示 UI (優化佈局) ---
@@ -2514,7 +2714,7 @@ func createDatabaseExplorerTab() (fyne.CanvasObject, func()) {
 	// 使用 Stack 在連線提示和 split 之間切換
 	contentStack := container.NewStack(split, container.NewCenter(notRunningBox))
 
-	// 選擇 Schema 時查詢資料表
+	// 選擇 Schema 時查詢資料表（異步 + Loading）
 	schemaList.OnSelected = func(id widget.ListItemID) {
 		schemas, _ := schemaListData.Get()
 		if id >= len(schemas) {
@@ -2522,21 +2722,29 @@ func createDatabaseExplorerTab() (fyne.CanvasObject, func()) {
 		}
 		selectedSchema := schemas[id]
 		tableHeader.SetText(fmt.Sprintf("資料庫 '%s' 的資料表：", selectedSchema))
-		tables, err := queryTables(selectedSchema)
-		if err != nil {
-			tableListData.Set([]string{fmt.Sprintf("查詢失敗: %v", err)})
-			return
-		}
-		if len(tables) == 0 {
-			tableListData.Set([]string{"（此資料庫沒有資料表）"})
-		} else {
-			tableListData.Set(tables)
-		}
+		tableListData.Set([]string{"載入中..."})
+
+		go func() {
+			tables, err := queryTables(selectedSchema)
+			fyne.Do(func() {
+				if err != nil {
+					tableListData.Set([]string{fmt.Sprintf("查詢失敗: %v", err)})
+					return
+				}
+				if len(tables) == 0 {
+					tableListData.Set([]string{"（此資料庫沒有資料表）"})
+				} else {
+					tableListData.Set(tables)
+				}
+			})
+		}()
 	}
 
 	// 頂部按鈕列
 	refreshBtn := widget.NewButtonWithIcon("Refresh", theme.ViewRefreshIcon(), func() {
 		notRunningMsg.SetText("請先至 Dashboard 頁面啟動 MariaDB 服務，\n再使用 Database Explorer。")
+		dbTabLock.Lock()
+		defer dbTabLock.Unlock()
 		refreshUI()
 	})
 
@@ -2546,25 +2754,43 @@ func createDatabaseExplorerTab() (fyne.CanvasObject, func()) {
 			return
 		}
 		heidiPath := scanRes.HeidiSQLList[0].ExePath
-		cmd := exec.Command(heidiPath, "-h=127.0.0.1", "-P=3306", "-u=root")
+		port := appCfg.Global.MariaDBPort
+		if port <= 0 {
+			port = 3306
+		}
+		user := appCfg.Global.MariaDBUser
+		if user == "" {
+			user = "root"
+		}
+		cmd := exec.Command(heidiPath, fmt.Sprintf("-h=127.0.0.1"), fmt.Sprintf("-P=%d", port), fmt.Sprintf("-u=%s", user))
 		if err := cmd.Start(); err != nil {
 			addErrorLog("system", "啟動 HeidiSQL 失敗", err)
 			return
 		}
 		go cmd.Wait()
-		addLog("system", "DB Explorer: 已啟動 HeidiSQL")
+		addLog("system", fmt.Sprintf("DB Explorer: 已啟動 HeidiSQL (127.0.0.1:%d)", port))
 	})
 
 	toolbar := container.NewHBox(refreshBtn, heidiSQLBtn)
 	topBar := container.NewBorder(nil, nil, nil, toolbar, title)
 
-	// 初始化刷新
-	go func() {
-		time.Sleep(300 * time.Millisecond)
+	// --- Loading 狀態控制 ---
+	loadingIndicator = widget.NewProgressBarInfinite()
+	loadingIndicator.Hide()
+
+	safeRefresh := func() {
+		dbTabLock.Lock()
+		defer dbTabLock.Unlock()
+		isMainTabLoading.Store(true)
 		refreshUI()
+	}
+
+	// 初始化刷新（移除 300ms sleep，改用立即異步）
+	go func() {
+		safeRefresh()
 	}()
 
-	return container.NewBorder(container.NewVBox(topBar, statusLabel), nil, nil, nil, contentStack), refreshUI
+	return container.NewBorder(container.NewVBox(topBar, statusLabel, loadingIndicator), nil, nil, nil, contentStack), safeRefresh
 }
 
 func applyTheme(themeName string) {
@@ -2631,9 +2857,6 @@ func createSettingsTab(win fyne.Window) fyne.CanvasObject {
 	minToTrayCheck := widget.NewCheck("Minimize to System Tray on Close", nil)
 	minToTrayCheck.Checked = appCfg.Global.MinimizeToTray
 
-	runOnBootCheck := widget.NewCheck("Run WinCMP on System Startup", nil)
-	runOnBootCheck.Checked = appCfg.Global.RunOnBoot
-
 	autoUpdateHostsCheck := widget.NewCheck("Auto Update System Hosts File", nil)
 	autoUpdateHostsCheck.Checked = appCfg.Global.AutoUpdateHosts
 
@@ -2660,7 +2883,6 @@ func createSettingsTab(win fyne.Window) fyne.CanvasObject {
 			appCfg.Global.RestoreLastState = restoreLastStateCheck.Checked
 			appCfg.Global.AutoUpdateHosts = autoUpdateHostsCheck.Checked
 			appCfg.Global.MinimizeToTray = minToTrayCheck.Checked
-			appCfg.Global.RunOnBoot = runOnBootCheck.Checked
 
 			var days int
 			fmt.Sscanf(maxLogEntry.Text, "%d", &days)
@@ -2671,6 +2893,7 @@ func createSettingsTab(win fyne.Window) fyne.CanvasObject {
 				addErrorLog("system", "自動儲存設定失敗", err)
 			} else {
 				addLog("system", fmt.Sprintf("⚙️ %s: [%v] ➔ [%v] (Auto Saved)", settingName, oldVal, newVal))
+				cleanupOldLogs(days)
 			}
 		})
 		mu.Unlock()
@@ -2707,11 +2930,6 @@ func createSettingsTab(win fyne.Window) fyne.CanvasObject {
 			appCfg.Global.MinimizeToTray = b // 為了讓 refreshSystemTray 讀到最新狀態，先更新記憶體
 			debouncedSave("Min to Tray", old, b)
 			refreshSystemTray(fyne.CurrentApp(), win)
-		}
-	}
-	runOnBootCheck.OnChanged = func(b bool) {
-		if b != appCfg.Global.RunOnBoot {
-			debouncedSave("Run on Boot", appCfg.Global.RunOnBoot, b)
 		}
 	}
 	autoUpdateHostsCheck.OnChanged = func(b bool) {
@@ -2751,7 +2969,6 @@ func createSettingsTab(win fyne.Window) fyne.CanvasObject {
 	)
 	behForm := widget.NewForm(
 		widget.NewFormItem("Behavior", minToTrayCheck),
-		widget.NewFormItem("Startup", runOnBootCheck),
 	)
 	sysGrid := container.NewGridWithColumns(2, autoForm, behForm)
 

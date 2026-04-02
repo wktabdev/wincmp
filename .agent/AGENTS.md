@@ -7,7 +7,7 @@
 ## 1. 建置 / 測試指令
 
 ### 前置需求
-- Go 1.25+
+- Go 1.25.7+
 - MinGW-w64 (WinLibs) — 用於 Fyne Cgo 依賴的 C 編譯器
 - 確認 `gcc -v` 可正常執行
 
@@ -57,6 +57,8 @@ go build -o test.exe ./internal/config
 ### 套件結構
 ```
 main.go                 # 應用程式進入點：GUI 建構、事件處理、配置生成
+ui_node.go             # Node.js Tab UI 節點定義
+bundled_icon.go        # 應用圖示資源
 internal/
 ├── config/            # JSON 設定檔的讀寫與資料結構定義
 ├── scanner/           # bin/ 目錄掃描器：偵測已安裝服務版本與 Port 計算
@@ -64,9 +66,14 @@ internal/
 │   ├── manager.go    # Manager 核心：register/unregister/StopAll
 │   ├── caddy.go      # Caddy 服務：StartCaddy / StopCaddy / ReloadCaddy
 │   ├── mariadb.go    # MariaDB 服務：StartMariaDB / StopMariaDB
-│   └── php.go        # PHP-CGI 服務：StartPHPCGI / StopPHPCGI（多行程）
+│   ├── php.go        # PHP-CGI 服務：StartPHPCGI / StopPHPCGI（多行程）
+│   ├── node.go       # Node.js 服務：Background / Terminal 兩種模式
+│   └── job.go        # Windows Job Object 初始化
 ├── detect/            # 專案類型偵測器（Laravel）
-└── hosts/            # Windows Hosts 檔管理
+├── hosts/            # Windows Hosts 檔管理
+├── port/             # Port 佔用檢測
+├── resource/         # 資源監控（CPU/RAM/子行程 Stack）
+└── singleinstance/    # 單實例鎖 + 視窗帶到前景
 ```
 
 ### 命名慣例
@@ -276,11 +283,12 @@ uptimeData.Set("12:34:56")
 
 | 文件 | 用途 |
 |------|------|
-| `System_design_document.md` | 系統架構與設計決策 |
-| `Develop_Task_List.md` | 開發任務清單 |
+| `doc/architecture_tech_stack.md` | 系統架構與技術棧 |
+| `doc/develop_task_list.md` | 開發任務清單 |
+| `doc/reduce_ui_lag.md` | UI 效能優化記錄 |
+| `doc/process_memory_calculation.md` | 行程記憶體計算方式 |
 | `readme.md` | 專案概述與建置說明 |
-| `.agent/lessons.md` | 過往經驗與教訓 |
 
 ---
 
-> 最後更新：2026-03-18
+> 最後更新：2026-03-30

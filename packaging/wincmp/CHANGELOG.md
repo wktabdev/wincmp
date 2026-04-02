@@ -1,9 +1,27 @@
 # Changelog
 
-## [1.1.1] - 2026-03-27
+## [1.1.2] - 2026-04-02
+
+### Changed
+- 改用 RSS (WorkingSetSize) 顯示 WinCMP 佔用的 RAM, 反映程式實際佔用的總物理記憶體 (和 Windows Task Manager 顯示仍有差異)
+- 底部資訊欄的 Monitor 區域懸停顯示自訂 Tooltip 的 Stack Total 和 服務明細資訊 (如 Caddy, MariaDB, PHP-CGI, Node.js)
+
+---
+
+## [1.1.1] - 2026-03-30
+
+### Added
+- 底部資訊欄加上 Monitor, 顯示 WinCMP 佔用的 CPU 和 RAM
 
 ### Changed
 - 新增 MariaDB 設定, 可使用外部 MariaDB/MySQL, 自訂路徑和端口
+
+### Fixed
+- 新增 Terminal Logs 日誌限制 (500 行或 200KB 字符)
+- 修復頁面卡頓和效能缺陷 (Projects 減少OS Stat調用和使用預計算函式, DB Explorer和Node.js異步載入, 移除非必要延遲, 快速連續點擊 Tab 會被忽略, 必須等當前 Tab 載入完成)
+- 修復 Settings 的 MaxLogRetention 能自動刪除過期的 `error-*.log`, `node-*.log`, `wincmp-*.log` 記錄檔
+
+---
 
 ## [1.1.0] - 2026-03-26
 

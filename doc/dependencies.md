@@ -31,6 +31,14 @@
 - **建議**: 
     - 輕量級的資料庫管理工具，建議下載安裝版或免安裝版備用。
 
+### 6. Node.js
+- **連結**: [Node.js Downloads](https://nodejs.org/dist/)
+- **建議**: 
+    - 建議下載 **LTS (Long Term Support)** 版本，確保穩定性。
+    - 選擇 **x64** 版本以符合現代環境。
+    - 建議使用 **ZIP** 免安裝版以便攜式配置，或使用 **MSI** 安裝包進行標準安裝。
+    - Node.js 主要用於前端構建工具（如 Vite、esbuild）和開發腳本。
+
 ---
 
 ## 📂 建議目錄結構 (Directory Structure)

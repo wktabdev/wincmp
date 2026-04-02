@@ -40,6 +40,8 @@ type GlobalConfig struct {
 	MariaDBDatadir  string `json:"mariadb_datadir"`
 	MariaDBType     string `json:"mariadb_type"`
 	MariaDBPort     int    `json:"mariadb_port"`
+	MariaDBUser     string `json:"mariadb_user"`
+	MariaDBPassword string `json:"mariadb_password"`
 }
 
 // LastServiceState 記錄各個服務上次關閉時的狀態
@@ -70,6 +72,9 @@ type ProjectConfig struct {
 	NodePort    int      `json:"node_port,omitempty"`
 	NodeMode    string   `json:"node_mode,omitempty"`    // "Background" 或 "Terminal"
 	NodeVersion string   `json:"node_version,omitempty"` // "24.14.1" 等
+
+	// ConfigExists 快取：Caddy 設定檔是否存在（避免每次渲染都 os.Stat）
+	ConfigExists bool `json:"-"`
 }
 
 // Load 從指定路徑載入 wincmp.json 設定檔
@@ -168,7 +173,21 @@ func (c *WincmpConfig) GetSSLKeyPath(project ProjectConfig, baseDir string) stri
 	}
 	sslDir := c.Global.DefaultSSL
 	if !filepath.IsAbs(sslDir) {
-		sslDir = filepath.Join(baseDir, sslDir)
+		sslDir = filepath.Join(sslDir, baseDir)
 	}
 	return filepath.Join(sslDir, project.Domains[0]+".key")
+}
+
+// RefreshConfigExists 預計算所有專案的 Caddy 設定檔是否存在
+// 避免每次渲染 List 都重複 os.Stat()，提升 UI 效能
+func (c *WincmpConfig) RefreshConfigExists(baseDir string) {
+	sitesDir := filepath.Join(baseDir, "conf", "sites")
+	for i := range c.Projects {
+		caddyConfigPath := filepath.Join(sitesDir, c.Projects[i].Name+".caddy")
+		if _, err := os.Stat(caddyConfigPath); err == nil {
+			c.Projects[i].ConfigExists = true
+		} else {
+			c.Projects[i].ConfigExists = false
+		}
+	}
 }
