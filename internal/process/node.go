@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/shirou/gopsutil/v3/process"
 	"wincmp/internal/config"
 )
 
@@ -94,11 +95,10 @@ func (m *Manager) StartNode(project config.ProjectConfig, mode string, exePath s
 
 	m.register(serviceKey, "Node ("+project.Name+")", exePath, []*exec.Cmd{cmd})
 
-	// 背景監聽退出事件 — 但不報「異常退出」如果是我們主動 Stop 觸發的
+	// 背景監聽退出事件
 	go func() {
 		err := cmd.Wait()
 		if m.IsRunning(serviceKey) {
-			// 非預期退出（不是由 StopNode 觸發的）
 			if err != nil {
 				m.errorLog("node", fmt.Sprintf("[%s] 異常退出", project.Name), err)
 			} else {
@@ -108,8 +108,58 @@ func (m *Manager) StartNode(project config.ProjectConfig, mode string, exePath s
 		}
 	}()
 
+	// 背景 PID 動態更新
+	go m.trackNodePIDs(serviceKey, project.Name, project.NodePort, false)
+	
 	m.log("node", "✅ [%s] Background 模式已啟動 (PID: %d)", project.Name, cmd.Process.Pid)
 	return nil
+}
+
+// trackNodePIDs 定期透過 Port 偵測 Node 進程，並抓取整個進程樹的 PID
+func (m *Manager) trackNodePIDs(serviceKey, projectName string, port int, isTerminal bool) {
+	ticker := time.NewTicker(4 * time.Second)
+	defer ticker.Stop()
+
+	// 給 Node 一點時間啟動
+	time.Sleep(5 * time.Second)
+
+	ctx := m.GetContext(serviceKey)
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			nodePID := findNodePIDByPort(port)
+			if nodePID > 0 {
+				pids := []int{nodePID}
+				// 遞迴抓取所有子進程
+				pids = append(pids, m.getChildPIDs(nodePID)...)
+				m.UpdatePIDs(serviceKey, pids)
+			} else if isTerminal {
+				// Terminal 模式下，如果 Port 沒了代表服務完全停止
+				if m.IsRunning(serviceKey) {
+					m.log("node", "ℹ️ [%s] Terminal 模式 Node 已停止 (Port %d 已釋放)", projectName, port)
+					m.unregister(serviceKey)
+				}
+				return
+			}
+		}
+	}
+}
+
+// getChildPIDs 遞迴取得所有子進程 PID
+func (m *Manager) getChildPIDs(parentPID int) []int {
+	var pids []int
+	if p, err := process.NewProcess(int32(parentPID)); err == nil {
+		if children, err := p.Children(); err == nil {
+			for _, c := range children {
+				pids = append(pids, int(c.Pid))
+				pids = append(pids, m.getChildPIDs(int(c.Pid))...)
+			}
+		}
+	}
+	return pids
 }
 
 // pipeNodeOutput 將子程序的 stdout/stderr 透過管線傳送到 Terminal Logs
@@ -209,29 +259,8 @@ func (m *Manager) registerTerminalNode(serviceKey, projectName, exePath string, 
 	}
 	m.mu.Unlock()
 
-	// 背景定期檢查 Port 是否仍被佔用
-	go func() {
-		ticker := time.NewTicker(3 * time.Second)
-		defer ticker.Stop()
-
-		// 先等 Node 啟動完成
-		time.Sleep(8 * time.Second)
-
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
-				if !CheckNodeRunning(port) {
-					if m.IsRunning(serviceKey) {
-						m.log("node", "ℹ️ [%s] Terminal 模式 Node 已停止 (Port %d 已釋放)", projectName, port)
-						m.unregister(serviceKey)
-					}
-					return
-				}
-			}
-		}
-	}()
+	// 背景定期檢查 Port 是否仍被佔用並更新 PIDs
+	go m.trackNodePIDs(serviceKey, projectName, port, true)
 }
 
 // StopNode 停止 Node.js

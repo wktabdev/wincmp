@@ -95,11 +95,15 @@ func (n *nodeRowLayout) Layout(objects []fyne.CanvasObject, size fyne.Size) {
 func createNodeTab(win fyne.Window) (fyne.CanvasObject, func()) {
 	title := widget.NewLabelWithStyle("Node.js Projects", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
 
-	// 進入分頁時重新掃描 bin/node/ 取得最新版本
-	tmpRes, err := scanner.ScanBinDir(baseDir)
-	if err == nil {
-		scanRes.NodeList = tmpRes.NodeList
-	}
+	// 進入分頁時重新掃描 bin/node/ 取得最新版本（異步執行避免阻塞 UI）
+	go func() {
+		tmpRes, err := scanner.ScanBinDir(baseDir)
+		if err == nil {
+			fyne.Do(func() {
+				scanRes.NodeList = tmpRes.NodeList
+			})
+		}
+	}()
 
 	// Header layout - 也使用自定義佈局以確保一致
 	createHeaderRect := func(w float32, label string) fyne.CanvasObject {
@@ -373,12 +377,21 @@ func createNodeTab(win fyne.Window) (fyne.CanvasObject, func()) {
 	)
 
 	refreshFunc := func() {
-		tmpRes, err := scanner.ScanBinDir(baseDir)
-		if err == nil {
-			scanRes.NodeList = tmpRes.NodeList
+		if isMainTabLoading.Load() {
+			return
 		}
-		refreshList()
-		list.Refresh()
+		isMainTabLoading.Store(true)
+		go func() {
+			tmpRes, err := scanner.ScanBinDir(baseDir)
+			if err == nil {
+				scanRes.NodeList = tmpRes.NodeList
+			}
+			fyne.Do(func() {
+				refreshList()
+				list.Refresh()
+				isMainTabLoading.Store(false)
+			})
+		}()
 	}
 
 	return container.NewPadded(content), refreshFunc

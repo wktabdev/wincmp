@@ -71,9 +71,6 @@ sequenceDiagram
 
 ## 5. 建議解決方法 (Recommendations)
 
-詳細評估請參閱 [System_design_document.md](System_design_document.md#9-緩解方案評估)。
-
-
 1.  **短期應急**：在 WinCMP 設定中將 PHP-CGI 進程數調高至 **16 以上**。
 2.  **架構優化 (最推薦)**：修改 Laravel 代碼，將內部的 cURL 請求改為直接的 **Service/Repository 函式呼叫**，避免走網絡層。
 3.  **環境分流**：為 API 服務配置獨立的 PHP-CGI 進程池。

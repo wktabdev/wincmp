@@ -177,7 +177,7 @@ func (m *Manager) StopMariaDB(
 		adminExe = filepath.Join(m.baseDir, "bin", "mariadb", "mariadb-"+version, "bin", m.getAdminExecutableName("mariadb"))
 	}
 
-	shutdownCmd := m.createCommand(adminExe, "-u", "root", "shutdown")
+	shutdownCmd := m.createCommand(adminExe, "-u", "root", "-P", fmt.Sprintf("%d", port), "shutdown")
 	if err := shutdownCmd.Run(); err != nil {
 		m.errorLog("mariadb", "admin shutdown 失敗，改用強制終止", err)
 		if err := m.stopService(serviceKey); err != nil {

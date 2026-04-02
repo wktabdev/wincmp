@@ -13,9 +13,9 @@ import (
 
 // ServiceState 表示一個被管理的服務狀態
 type ServiceState struct {
-	Name     string      // 服務名稱 (如 "Caddy", "MariaDB", "PHP-CGI 8.2.30")
-	Running  bool        // 是否正在運行
-	ExePath  string      // 啟動時使用的執行檔路徑 (用於 Reload 等操作)
+	Name      string      // 服務名稱 (如 "Caddy", "MariaDB", "PHP-CGI 8.2.30")
+	Running   bool        // 是否正在運行
+	ExePath   string      // 啟動時使用的執行檔路徑 (用於 Reload 等操作)
 	Commands  []*exec.Cmd // 該服務的所有子程序（PHP 可能有多個）
 	PIDs      []int       // 所有子程序的 PID
 	StartTime time.Time
@@ -101,6 +101,55 @@ func (m *Manager) GetPIDs(serviceKey string) []int {
 	return state.PIDs
 }
 
+func (m *Manager) GetAllPIDs() []int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	var all []int
+	for _, state := range m.services {
+		for _, pid := range state.PIDs {
+			if pid > 0 {
+				all = append(all, pid)
+			}
+		}
+	}
+	return all
+}
+
+// ServiceInfo 用於 tooltip 明細顯示的服務資訊
+type ServiceInfo struct {
+	Key  string // 服務識別 key（如 "caddy", "php-8.2.30", "node_abc123"）
+	Name string // 顯示名稱（如 "Caddy (2.11.1)", "Node (broker_portal)"）
+	PIDs []int  // 該服務所有 PID
+}
+
+// GetServiceBreakdown 取得所有正在運行的服務及其 PID 列表（按服務分類）
+func (m *Manager) GetServiceBreakdown() []ServiceInfo {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	var result []ServiceInfo
+	for key, state := range m.services {
+		if !state.Running || len(state.PIDs) == 0 {
+			continue
+		}
+		pids := make([]int, 0, len(state.PIDs))
+		for _, pid := range state.PIDs {
+			if pid > 0 {
+				pids = append(pids, pid)
+			}
+		}
+		if len(pids) > 0 {
+			result = append(result, ServiceInfo{
+				Key:  key,
+				Name: state.Name,
+				PIDs: pids,
+			})
+		}
+	}
+	return result
+}
+
 // register 註冊一個新的服務狀態
 func (m *Manager) register(serviceKey, name, exePath string, cmds []*exec.Cmd) {
 	pids := make([]int, len(cmds))
@@ -124,6 +173,16 @@ func (m *Manager) register(serviceKey, name, exePath string, cmds []*exec.Cmd) {
 		Cancel:    cancel,
 	}
 	m.mu.Unlock()
+}
+
+// UpdatePIDs 手動更新指定服務的 PID 列表（用於啟動後才能確定的進程）
+func (m *Manager) UpdatePIDs(serviceKey string, pids []int) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if state, exists := m.services[serviceKey]; exists {
+		state.PIDs = pids
+	}
 }
 
 // GetContext 取得服務的 context (用於監聽服務結束)

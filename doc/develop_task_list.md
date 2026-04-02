@@ -6,6 +6,22 @@
 
 ## ✅ 已完成項目 (Milestones)
 
+- [x] **現代化 UI 與專案管理界面** (v1.0+)
+  - 側邊導覽、多分頁系統、服務狀態即時監控。
+- [x] **多分頁日誌與旋轉日誌機制** (v1.0+)
+  - lumberjack 日誌滾動、500 行上限、依日期分類。
+- [x] **MariaDB 掃描與 DB Explorer** (v1.0+)
+  - 支援內建/外部 MySQL 相容模式、DB 檢視器。
+- [x] **Caddy 多進程 PHP 負載均衡** (v1.0+)
+  - 每版本預設 3 個 php-cgi 進程，基於 Upstream 分流。
+- [x] **Windows 系統匣 (System Tray) 支援** (v1.1+)
+  - 最小化至系統匣、單實例鎖 + 視窗帶到前景。
+- [x] **自動啟動上次關閉時的服務** (v1.1+)
+  - 狀態持久化於 `wincmp.json`，關閉/開啟自動還原。
+- [x] **服務運行時間計時** (v1.1+)
+  - Caddy、MariaDB、PHP 獨立計時與顯示。
+- [x] **WinCMP 資源監控** (v1.1+)
+  - 顯示 WinCMP 自身 RAM/CPU + 子進程 Stack Total。
 - [x] **Web Projects UI 優化** (2026-03-18)
   - 新增 `Json Config` 與 `Open Project Directory` 等快捷按鈕。
   - 支援快速複製項目網址與開啟 Caddyfile。
@@ -25,8 +41,6 @@
 ## 🛠️ 待處理任務 (To-Do)
 
 ### 1. 核心系統整合 (System & Core)
-- [ ] **Windows 開機啟動** (⭐)
-  - 目標：寫入 `HKCU\...\Run` 實現背景自動啟動與服務自動還原。
 - [ ] **Windows 環境變數一鍵設定** (⭐⭐)
   - 目標：自動將內部 PHP/Caddy 路徑加入系統 `Path`，方便 CLI 使用。
 - [ ] **服務執行檔自動下載器** (⭐⭐⭐)
