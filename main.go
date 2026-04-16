@@ -94,6 +94,9 @@ var (
 	mainTabLock      sync.Mutex
 	isMainTabLoading atomic.Bool
 
+	// Log Tab 切換鎖：防止應用初始化期間自動切換到 Runtime Tab
+	isLogTabSwitchAllowed atomic.Bool
+
 	// saveStateMu 保護 saveLastServiceState，避免並行讀寫 scanRes 和 IsRunning
 	saveStateMu sync.Mutex
 
@@ -438,6 +441,16 @@ func tabSwitchWorker() {
 	debounceTimer := time.NewTimer(time.Hour)
 	debounceTimer.Stop()
 
+	// Tab index 對應的 category 名稱（用於滾動到對應的 log）
+	tabIndexToCategory := []string{
+		0: "system",
+		1: "caddy",
+		2: "mariadb",
+		3: "mailpit",
+		4: "php",
+		5: "runtime",
+	}
+
 	for {
 		select {
 		case <-tabSwitchDone:
@@ -453,6 +466,13 @@ func tabSwitchWorker() {
 				fyne.Do(func() {
 					if logTabs != nil && logTabs.CurrentTabIndex() != lastReq.tabIndex {
 						logTabs.SelectIndex(lastReq.tabIndex)
+					}
+					// 切換 Tab 後，自動滾動到該 Tab 的 log 底部
+					if logEntries != nil {
+						cat := tabIndexToCategory[lastReq.tabIndex]
+						if scroll, ok := logEntries[cat]; ok && scroll != nil {
+							scroll.ScrollToBottom()
+						}
 					}
 				})
 			}
@@ -479,10 +499,10 @@ func addLog(category string, msg string) {
 		tabIndex = 2
 	case "mailpit":
 		logSource = mailpitLog
-		tabIndex = 5
+		tabIndex = 3 // Mailpit is at index 3 (System=0, Caddy=1, MariaDB=2, Mailpit=3, PHP=4, Runtime=5)
 	case "php":
 		logSource = phpLog
-		tabIndex = 3
+		tabIndex = 4 // PHP is at index 4 (System=0, Caddy=1, MariaDB=2, Mailpit=3, PHP=4, Runtime=5)
 	case "node", "runtime":
 		// 解析項目名，寫入該項目的 binding
 		projectName := parseProjectFromRuntimeMsg(msg)
@@ -490,6 +510,7 @@ func addLog(category string, msg string) {
 		bindings := runtimeLogBindings
 		activeProj := activeRuntimeProject
 		runtimeLogMu.RUnlock()
+		runtimeLogUpdated := false
 		if projectName != "" && bindings != nil {
 			if projLog, ok := bindings[projectName]; ok {
 				appendToLogBinding(projLog, newText)
@@ -497,17 +518,19 @@ func addLog(category string, msg string) {
 			// 如果該項目是當前顯示的項目，同步更新 runtimeLog
 			if projectName == activeProj {
 				appendToLogBinding(runtimeLog, newText)
+				runtimeLogUpdated = true
 			}
 		}
 		// 若無法解析項目名或無 activeRuntimeProject，fallback 寫入 runtimeLog
 		// 確保所有 runtime log 至少都顯示在 Runtime 分頁
 		if projectName == "" || activeProj == "" {
 			appendToLogBinding(runtimeLog, newText)
+			runtimeLogUpdated = true
 		}
-		// 自動切換到 Runtime 分頁
-		if logTabs != nil {
+		// 自動切換到 Runtime 分頁（只在實際有新內容時才切換，且初始化完成後）
+		if runtimeLogUpdated && logTabs != nil && isLogTabSwitchAllowed.Load() {
 			select {
-			case tabSwitchCh <- tabSwitchReq{tabIndex: 4}:
+			case tabSwitchCh <- tabSwitchReq{tabIndex: 5}:
 			default:
 			}
 		}
@@ -868,6 +891,7 @@ func main() {
 	startLogBufferSync()
 
 	// 初始化分頁切換 channel 和處理 goroutine
+	isLogTabSwitchAllowed.Store(false) // 初始化期間禁止 Log Tab 自動切換
 	tabSwitchCh = make(chan tabSwitchReq, 32)
 	tabSwitchDone = make(chan struct{})
 	go tabSwitchWorker()
@@ -924,6 +948,34 @@ func main() {
 	)
 	runtimeTabItem = container.NewTabItem("Runtime", createLogTab(runtimeLog, "runtime"))
 	logTabs.Append(runtimeTabItem)
+
+	// 使用者手動點擊 Log Tab 時，自動滾動到底部
+	logTabs.OnSelected = func(tab *container.TabItem) {
+		fyne.Do(func() {
+			if logEntries != nil {
+				var cat string
+				switch tab.Text {
+				case "System":
+					cat = "system"
+				case "Caddy":
+					cat = "caddy"
+				case "MariaDB":
+					cat = "mariadb"
+				case "Mailpit":
+					cat = "mailpit"
+				case "PHP":
+					cat = "php"
+				case "Runtime":
+					cat = "runtime"
+				default:
+					return
+				}
+				if scroll, ok := logEntries[cat]; ok && scroll != nil {
+					scroll.ScrollToBottom()
+				}
+			}
+		})
+	}
 
 	addLog("system", "正在初始化 WinCMP...")
 	addLog("system", fmt.Sprintf("專案根目錄: %s", baseDir))
@@ -1166,6 +1218,9 @@ func main() {
 	if procMgr.IsRunning("caddy") {
 		checkPHPForProjects(myWindow)
 	}
+
+	// 初始化完成，允許 Log Tab 自動切換
+	isLogTabSwitchAllowed.Store(true)
 
 	resourceStatusLabel := newDynamicTooltipLabel("WinCMP RAM: -- MB | CPU: -- %", myWindow)
 	resourceStatusLabel.SetToolTip("WinCMP 資源監控\n\n載入中...")
@@ -4234,8 +4289,7 @@ func triggerHostsUpdate() {
 	// 3. 更新 Hosts
 	err = hosts.UpdateHosts(missing)
 	if err != nil {
-		// 這裡通常是權限問題
-		addErrorLog("system", "更新系統 Hosts 失敗 (請嘗試以管理員權限執行 WinCMP)", err)
+		addErrorLog("system", "更新系統 Hosts 失敗", err)
 		return
 	}
 

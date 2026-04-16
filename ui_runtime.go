@@ -218,7 +218,7 @@ func createRuntimeTab(win fyne.Window) (fyne.CanvasObject, func()) {
 				ensureRuntimeLogBinding(proj.Name)
 				switchRuntimeLog(proj.Name)
 				if logTabs != nil {
-					logTabs.SelectIndex(4)
+					logTabs.SelectIndex(5) // Runtime 是第 6 個 tab（index 5）
 				}
 			}
 			filterBtn.SetToolTip(fmt.Sprintf("切換 Terminal Logs 至 Runtime (%s)", proj.Name))
