@@ -8,53 +8,12 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
-	"syscall"
 	"time"
-	"unsafe"
-)
-
-var (
-	modkernel32      = syscall.NewLazyDLL("kernel32.dll")
-	procLockFileEx   = modkernel32.NewProc("LockFileEx")
-	procUnlockFileEx = modkernel32.NewProc("UnlockFileEx")
 )
 
 const (
 	HostsFilePath = `C:\Windows\System32\drivers\etc\hosts`
-
-	lockfileExclusiveLock = 0x00000002
 )
-
-// lockFile 使用 Windows LockFileEx 對檔案進行獨佔鎖定
-func lockFile(f *os.File) error {
-	var overlapped syscall.Overlapped
-	ret, _, err := procLockFileEx.Call(
-		f.Fd(),
-		uintptr(lockfileExclusiveLock),
-		0,
-		0xFFFFFFFF, 0xFFFFFFFF,
-		uintptr(unsafe.Pointer(&overlapped)),
-	)
-	if ret == 0 {
-		return err
-	}
-	return nil
-}
-
-// unlockFile 解除檔案鎖定
-func unlockFile(f *os.File) error {
-	var overlapped syscall.Overlapped
-	ret, _, err := procUnlockFileEx.Call(
-		f.Fd(),
-		0,
-		0xFFFFFFFF, 0xFFFFFFFF,
-		uintptr(unsafe.Pointer(&overlapped)),
-	)
-	if ret == 0 {
-		return err
-	}
-	return nil
-}
 
 // validDomainPattern 用於驗證域名是否只含合法字元（防止 hosts 注入攻擊）
 var validDomainPattern = regexp.MustCompile(`^[a-zA-Z0-9]([a-zA-Z0-9\-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]*[a-zA-Z0-9])?)*$`)
@@ -117,7 +76,6 @@ func sanitizeDomains(domains []string) []string {
 }
 
 // UpdateHosts 將缺失的網域寫入 hosts 檔（需要 UAC 權限）
-// 使用 Windows file locking (LockFileEx) 確保寫入原子性
 func UpdateHosts(domains []string) error {
 	if len(domains) == 0 {
 		return nil
@@ -128,18 +86,14 @@ func UpdateHosts(domains []string) error {
 		return fmt.Errorf("所有域名均未通過安全性驗證，已拒絕寫入 hosts")
 	}
 
-	f, err := os.OpenFile(HostsFilePath, os.O_APPEND|os.O_WRONLY, 0600)
+	// 直接以追加模式開啟 hosts 檔案
+	f, err := os.OpenFile(HostsFilePath, os.O_APPEND|os.O_WRONLY, 0644)
 	if err != nil {
 		return fmt.Errorf("無法開啟 hosts 檔案進行寫入 (可能需要管理員權限): %w", err)
 	}
 	defer f.Close()
 
-	// Windows file locking: 獨佔鎖定防止同時寫入
-	if err := lockFile(f); err != nil {
-		return fmt.Errorf("無法鎖定 hosts 檔案: %w", err)
-	}
-	defer unlockFile(f)
-
+	// 寫入時間戳和域名
 	timestamp := time.Now().Format("2006-01-02 15:04:05")
 	if _, err := f.WriteString(fmt.Sprintf("\n# Added by WinCMP at %s\n", timestamp)); err != nil {
 		return err

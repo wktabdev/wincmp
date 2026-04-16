@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.2.2] - 2026-04-16
+
+### Fixed
+- 修復 Windows Hosts 檔案寫入問題
+- 修復 Terminal Logs 分頁索引錯誤（Mailpit/PHP/Runtime Tab 索引映射不正確）
+- 修復應用程式啟動時，Terminal Logs 自動跳到 Runtime 分頁的問題（新增初始化鎖定機制）
+- 修復 Runtime Log 有新內容時，自動切換分頁無效的問題（需條件滿足才觸發切換）
+- 修復分頁切換後，Log 內容未自動滾動到最新的問題（將滾動移至分頁切換後執行）
+
+### Changed
+- Terminal Logs 分頁自動滾動優化：分頁切換時在目標分頁執行滾動到底部
+
 ## [1.2.1] - 2026-04-16
 
 ### Added
