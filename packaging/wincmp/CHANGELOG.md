@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.2.4] - 2026-04-20
+
+### Fixed
+- 修正無法打開 Edit Project 下 Open Project Directory 和 Settings 下的 hosts 的問題
+
 ## [1.2.3] - 2026-04-16
 
 ### Fixed

@@ -735,7 +735,7 @@ var blockedExecExts = map[string]bool{
 	".vbs": true, ".msi": true, ".com": true, ".scr": true,
 }
 
-func openLocalPath(path string) {
+func openLocalPath(path string, force bool) {
 	absPath, err := filepath.Abs(path)
 	if err != nil {
 		addErrorLog("system", "路徑無效: "+path, err)
@@ -743,7 +743,9 @@ func openLocalPath(path string) {
 	}
 	cleanBase := filepath.Clean(baseDir)
 	cleanAbs := filepath.Clean(absPath)
-	if !strings.HasPrefix(cleanAbs, cleanBase+string(os.PathSeparator)) && cleanAbs != cleanBase {
+	
+	// 特別許可：若 force 為 true 則跳過目錄限制 (但仍保留副檔名檢查)
+	if !force && !strings.HasPrefix(cleanAbs, cleanBase+string(os.PathSeparator)) && cleanAbs != cleanBase {
 		addErrorLog("system", "路徑不在允許的目錄內: "+absPath, nil)
 		return
 	}
@@ -771,7 +773,7 @@ func openLatestLog(prefix string) {
 	}
 	sort.Strings(matches)
 	latest := matches[len(matches)-1]
-	openLocalPath(latest)
+	openLocalPath(latest, false)
 }
 
 func toPtr(s string) *uint16 {
@@ -1226,7 +1228,7 @@ func main() {
 	resourceStatusLabel.SetToolTip("WinCMP 資源監控\n\n載入中...")
 	logTitle := widget.NewLabelWithStyle("Terminal Logs", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
 	caddyLogBtn := widget.NewButtonWithIcon("Caddy.log", theme.DocumentIcon(), func() {
-		openLocalPath(filepath.Join(baseDir, "logs", "caddy.log"))
+		openLocalPath(filepath.Join(baseDir, "logs", "caddy.log"), false)
 	})
 	runtimeLogBtn := widget.NewButtonWithIcon("Runtime.log", theme.DocumentIcon(), func() {
 		runtimeLogMu.RLock()
@@ -1238,7 +1240,7 @@ func main() {
 			matches, _ := filepath.Glob(pattern)
 			if len(matches) > 0 {
 				sort.Strings(matches)
-				openLocalPath(matches[len(matches)-1])
+				openLocalPath(matches[len(matches)-1], false)
 				return
 			}
 		}
@@ -2928,10 +2930,10 @@ func showProjectEditor(win fyne.Window, proj *config.ProjectConfig, onSave func(
 	)
 
 	openDirBtn := widget.NewButtonWithIcon("Open Project Directory", theme.FolderIcon(), func() {
-		openLocalPath(rootPathEntry.Text)
+		openLocalPath(rootPathEntry.Text, true)
 	})
 	openCaddyfileBtn := widget.NewButtonWithIcon("Open Caddyfile", theme.DocumentIcon(), func() {
-		openLocalPath(filepath.Join(baseDir, "conf", "sites", proj.Name+".caddy"))
+		openLocalPath(filepath.Join(baseDir, "conf", "sites", proj.Name+".caddy"), false)
 	})
 
 	actionRow := container.NewHBox(openDirBtn, openCaddyfileBtn)
@@ -3983,13 +3985,13 @@ func createSettingsTab(win fyne.Window) fyne.CanvasObject {
 	)
 
 	hostsBtn := widget.NewButtonWithIcon("hosts", theme.DocumentIcon(), func() {
-		openLocalPath("C:\\Windows\\System32\\drivers\\etc\\hosts")
+		openLocalPath("C:\\Windows\\System32\\drivers\\etc\\hosts", true)
 	})
 	phpIniBtn := widget.NewButtonWithIcon("php.ini", theme.DocumentIcon(), func() {
-		openLocalPath(filepath.Join(baseDir, "conf", "php", "php.ini"))
+		openLocalPath(filepath.Join(baseDir, "conf", "php", "php.ini"), false)
 	})
 	jsonConfigBtn := widget.NewButtonWithIcon("WinCMP Config", theme.DocumentIcon(), func() {
-		openLocalPath(filepath.Join(baseDir, "conf", "wincmp.json"))
+		openLocalPath(filepath.Join(baseDir, "conf", "wincmp.json"), false)
 	})
 
 	configTitle := widget.NewLabelWithStyle("Config", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
