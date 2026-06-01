@@ -214,6 +214,80 @@ if ($7zExe) {
     Write-Host "    -> Successfully generated: $ZipFile" -ForegroundColor Green
 }
 
+# 9. Generate GitHub Release Suggestion Document
+Write-Host "[9] Generating GitHub Release suggestion document..." -ForegroundColor Gray
+
+$ChangelogPath = Join-Path $ProjectRoot "packaging\wincmp\CHANGELOG.md"
+$ReleaseNotesContent = ""
+
+if (Test-Path $ChangelogPath) {
+    $ChangelogLines = Get-Content $ChangelogPath
+    $StartIndex = -1
+    $EndIndex = -1
+    
+    # Find the line matching current version, e.g., "## [1.2.5]" or "## 1.2.5"
+    for ($i = 0; $i -lt $ChangelogLines.Count; $i++) {
+        $line = $ChangelogLines[$i]
+        if ($line -match "^##\s+\[?$Version\]?") {
+            $StartIndex = $i + 1
+            break
+        }
+    }
+    
+    if ($StartIndex -ne -1) {
+        # Find next heading as end index
+        for ($i = $StartIndex; $i -lt $ChangelogLines.Count; $i++) {
+            $line = $ChangelogLines[$i]
+            if ($line -match "^##\s+") {
+                $EndIndex = $i - 1
+                break
+            }
+        }
+        if ($EndIndex -eq -1) {
+            $EndIndex = $ChangelogLines.Count - 1
+        }
+        
+        $NotesLines = $ChangelogLines[$StartIndex..$EndIndex]
+        $ReleaseNotesContent = ($NotesLines -join "`n").Trim()
+    }
+}
+
+if (-not $ReleaseNotesContent) {
+    $ReleaseNotesContent = "- Maintenance updates and stability improvements."
+}
+
+# Construct release suggestion template using format operator to avoid quote escapes
+$ReleaseDocTemplate = @'
+# GitHub Release Suggestion (v{0})
+
+## Release Title
+WinCMP v{0}
+
+## Tag Name
+v{0}
+
+## Release Notes (Markdown)
+---
+## WinCMP v{0}
+
+This release introduces new features, updates, and fixes to WinCMP.
+
+### What's Changed
+{1}
+
+### Getting Started
+1. Download `wincmp_v{0}.7z` (or `wincmp_v{0}.zip`).
+2. Extract the archive to any folder on your system.
+3. Double-click `WinCMP_v{0}.exe` to launch the control panel.
+---
+'@
+
+$ReleaseDocContent = $ReleaseDocTemplate -f $Version, $ReleaseNotesContent
+$ReleaseNotesFile = Join-Path $ReleaseParentDir "release_notes_v$Version.md"
+$utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+[System.IO.File]::WriteAllText($ReleaseNotesFile, $ReleaseDocContent, $utf8NoBom)
+Write-Host "    -> Generated GitHub Release notes: $ReleaseNotesFile" -ForegroundColor Green
+
 # Return to root
 Set-Location -Path $ProjectRoot
 
