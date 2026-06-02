@@ -1080,6 +1080,7 @@ func main() {
 				RestoreLastState: bool(true), // 用於相容性
 				MinimizeToTray:   false,
 				AutoUpdateHosts:  true,
+				DependencyURL:    "https://raw.githubusercontent.com/wktabdev/wincmp/main/conf/dependencies.json",
 			},
 		}
 	} else {
@@ -2092,7 +2093,10 @@ func fetchDependenciesForAutoDownload(win fyne.Window, missingCaddy, missingPHP,
 
 	go func() {
 		url := "https://raw.githubusercontent.com/wktabdev/wincmp/main/conf/dependencies.json"
-		client := &http.Client{Timeout: 5 * time.Second}
+		if appCfg != nil && appCfg.Global.DependencyURL != "" {
+			url = appCfg.Global.DependencyURL
+		}
+		client := &http.Client{Timeout: 10 * time.Second}
 		resp, err := client.Get(url)
 
 		success := false
@@ -2101,6 +2105,13 @@ func fetchDependenciesForAutoDownload(win fyne.Window, missingCaddy, missingPHP,
 			if resp.StatusCode == http.StatusOK {
 				var newCfg config.DependencyConfig
 				if err := json.NewDecoder(resp.Body).Decode(&newCfg); err == nil {
+					// 與本地現有的配置進行合併，以遠端最新資料優先，保留本地有而遠端沒有的欄位（如 mailpit 或新增的 PHP 版本）
+					for k, v := range depCfg {
+						if _, ok := newCfg[k]; !ok {
+							newCfg[k] = v
+						}
+					}
+
 					requiredKeys := []string{"caddy", "mariadb", "composer", "heidisql", "node"}
 					valid := true
 					for _, key := range requiredKeys {
@@ -2716,6 +2727,9 @@ func manualFetchDependencies(win fyne.Window) {
 
 	go func() {
 		url := "https://raw.githubusercontent.com/wktabdev/wincmp/main/conf/dependencies.json"
+		if appCfg != nil && appCfg.Global.DependencyURL != "" {
+			url = appCfg.Global.DependencyURL
+		}
 		client := &http.Client{Timeout: 10 * time.Second}
 		resp, err := client.Get(url)
 
@@ -2813,6 +2827,9 @@ func manualFetchDependencies(win fyne.Window) {
 func fetchLatestDependenciesInBackground(win fyne.Window) {
 	go func() {
 		url := "https://raw.githubusercontent.com/wktabdev/wincmp/main/conf/dependencies.json"
+		if appCfg != nil && appCfg.Global.DependencyURL != "" {
+			url = appCfg.Global.DependencyURL
+		}
 		client := &http.Client{Timeout: 10 * time.Second}
 		resp, err := client.Get(url)
 

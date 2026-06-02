@@ -22,6 +22,8 @@ type GlobalConfig struct {
 	DefaultSSL string `json:"default_ssl"`
 	LogFile    string `json:"log_file"`
 
+	DependencyURL string `json:"dependency_url"`
+
 	// 系統設定
 	RestoreLastState bool             `json:"restore_last_state"`
 	MinimizeToTray   bool             `json:"minimize_to_tray"`
@@ -186,6 +188,11 @@ func Load(path string) (*WincmpConfig, error) {
 		} else {
 			cfg.Global.MariaDBPassword = dec
 		}
+	}
+
+	// 補全可能缺失的預設依賴更新網址
+	if cfg.Global.DependencyURL == "" {
+		cfg.Global.DependencyURL = "https://raw.githubusercontent.com/wktabdev/wincmp/main/conf/dependencies.json"
 	}
 
 	return &cfg, nil
