@@ -10,7 +10,7 @@ import { EventsOn, EventsOff } from '../wailsjs/runtime/runtime';
 import logo from './assets/images/icon.svg';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'projects' | 'db_explorer' | 'resources' | 'settings'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'projects' | 'db_explorer' | 'resources' | 'settings' | 'logs'>('dashboard');
   const [showLogs, setShowLogs] = useState(true);
   const [systemResources, setSystemResources] = useState({ cpu: 0, memory: 0 });
   const [isCollapsed, setIsCollapsed] = useState(() => localStorage.getItem('sidebar_collapsed') === 'true');
@@ -53,6 +53,8 @@ export default function App() {
         return <ResourceMonitor />;
       case 'settings':
         return <Settings />;
+      case 'logs':
+        return <TerminalLogs />;
       default:
         return <Dashboard />;
     }
@@ -63,7 +65,8 @@ export default function App() {
     { id: 'projects', label: '專案管理 (Projects)', icon: <Folder size={15} /> },
     { id: 'db_explorer', label: '資料庫瀏覽 (Database)', icon: <Database size={15} /> },
     { id: 'resources', label: '資源監控 (Resources)', icon: <Cpu size={15} /> },
-    { id: 'settings', label: '系統設定 (Settings)', icon: <SettingsIcon size={15} /> }
+    { id: 'settings', label: '系統設定 (Settings)', icon: <SettingsIcon size={15} /> },
+    { id: 'logs', label: '終端日誌 (Terminal Logs)', icon: <Terminal size={15} /> }
   ] as const;
 
   return (
@@ -213,19 +216,21 @@ export default function App() {
         </div>
 
         {/* 控制日誌的收放欄 */}
-        <div className="h-9 border-t border-darkBorder bg-[#0e0e11] px-6 flex justify-between items-center select-none text-[11px]">
-          <button
-            onClick={() => setShowLogs(!showLogs)}
-            className="flex items-center gap-1.5 font-semibold text-gray-400 hover:text-gray-200 transition"
-          >
-            <Terminal size={11} className="text-blue-400" />
-            <span>{showLogs ? '收起 Logs 控制台' : '打開 Logs 控制台'}</span>
-          </button>
-          <span className="text-[9px] text-gray-500 font-mono"></span>
-        </div>
+        {activeTab !== 'logs' && (
+          <div className="h-9 border-t border-darkBorder bg-[#0e0e11] px-6 flex justify-between items-center select-none text-[11px]">
+            <button
+              onClick={() => setShowLogs(!showLogs)}
+              className="flex items-center gap-1.5 font-semibold text-gray-400 hover:text-gray-200 transition"
+            >
+              <Terminal size={11} className="text-blue-400" />
+              <span>{showLogs ? '收起 Logs 控制台' : '打開 Logs 控制台'}</span>
+            </button>
+            <span className="text-[9px] text-gray-500 font-mono"></span>
+          </div>
+        )}
 
         {/* 下半部：即時日誌區 */}
-        {showLogs && (
+        {activeTab !== 'logs' && showLogs && (
           <div className="h-[35%] min-h-[150px] border-t border-darkBorder bg-darkBg overflow-hidden">
             <TerminalLogs />
           </div>
