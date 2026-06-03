@@ -977,7 +977,7 @@ func main() {
 				RestoreLastState: bool(true), // 用於相容性
 				MinimizeToTray:   false,
 				AutoUpdateHosts:  true,
-				DependencyURL:    "https://raw.githubusercontent.com/wktabdev/wincmp/main/conf/dependencies.json",
+				DependencyURL:    config.DefaultDependencyURL,
 			},
 		}
 	}
@@ -2164,7 +2164,7 @@ func fetchDependenciesForAutoDownload(win fyne.Window, missingCaddy, missingPHP,
 	progress.Show()
 
 	go func() {
-		url := "https://raw.githubusercontent.com/wktabdev/wincmp/main/conf/dependencies.json"
+		url := config.DefaultDependencyURL
 		if appCfg != nil && appCfg.Global.DependencyURL != "" {
 			url = appCfg.Global.DependencyURL
 		}
@@ -2799,7 +2799,7 @@ func manualFetchDependencies(win fyne.Window) {
 	progress.Show()
 
 	go func() {
-		url := "https://raw.githubusercontent.com/wktabdev/wincmp/main/conf/dependencies.json"
+		url := config.DefaultDependencyURL
 		if appCfg != nil && appCfg.Global.DependencyURL != "" {
 			url = appCfg.Global.DependencyURL
 		}
@@ -2890,11 +2890,11 @@ func manualFetchDependencies(win fyne.Window) {
 				}
 				errLabel := widget.NewLabel(errMsg)
 				errLabel.Wrapping = fyne.TextWrapWord
-				
+
 				// 限制最大寬度與高度以防錯誤訊息太長拉寬視窗
 				scroll := container.NewVScroll(errLabel)
 				scroll.SetMinSize(fyne.NewSize(380, 100))
-				
+
 				errDialog := dialog.NewCustom("錯誤", "確定", scroll, win)
 				errDialog.Show()
 			}
@@ -2905,7 +2905,7 @@ func manualFetchDependencies(win fyne.Window) {
 // fetchLatestDependenciesInBackground 在背景取得最新建議依賴版本並更新本地 dependencies.json，完成後若視窗仍開啟則自動刷新
 func fetchLatestDependenciesInBackground(win fyne.Window) {
 	go func() {
-		url := "https://raw.githubusercontent.com/wktabdev/wincmp/main/conf/dependencies.json"
+		url := config.DefaultDependencyURL
 		if appCfg != nil && appCfg.Global.DependencyURL != "" {
 			url = appCfg.Global.DependencyURL
 		}
@@ -5361,7 +5361,7 @@ func showMariaDBSettingsDialog(win fyne.Window) {
 		basedir := binaryPathEntry.Text
 		datadir := dataPathEntry.Text
 		dbTypeSel := typeSelect.Selected
- 
+
 		portStr := portEntry.Text
 		portVal := 0
 		if portStr != "" {
@@ -5372,7 +5372,7 @@ func showMariaDBSettingsDialog(win fyne.Window) {
 				return
 			}
 		}
- 
+
 		if portVal > 0 {
 			blocked := port.CheckPorts([]port.PortInfo{
 				{Service: "MariaDB", Port: portVal},
@@ -5384,7 +5384,7 @@ func showMariaDBSettingsDialog(win fyne.Window) {
 				}
 			}
 		}
- 
+
 		if isExt {
 			if basedir == "" {
 				dialog.ShowError(errors.New(i18n.T("外部模式必須指定 Binary Path")), win)
@@ -5560,32 +5560,32 @@ func showHostsWriteFailedDialog(missingDomains []string) {
 		hostsContent := sb.String()
 
 		desc := widget.NewLabel(i18n.T("由於沒有管理員權限，無法自動更新系統 Hosts 檔案。\n請手動將以下內容新增到您的系統 Hosts 中："))
- 
+
 		richText := widget.NewRichText(
 			&widget.TextSegment{
 				Style: widget.RichTextStyleCodeBlock,
 				Text:  hostsContent,
 			},
 		)
- 
+
 		copyBtn := widget.NewButtonWithIcon(i18n.T("複製內容"), theme.ContentCopyIcon(), func() {
 			win.Clipboard().SetContent(hostsContent)
 			dialog.ShowInformation(i18n.T("成功"), i18n.T("已複製到剪貼簿"), win)
 		})
- 
+
 		openBtn := widget.NewButtonWithIcon(i18n.T("以管理員權限開啟 Hosts 檔案"), theme.DocumentCreateIcon(), func() {
 			cmd := exec.Command("powershell", "-Command", `Start-Process notepad.exe -ArgumentList "C:\Windows\System32\drivers\etc\hosts" -Verb runAs`)
 			if err := cmd.Run(); err != nil {
 				dialog.ShowError(fmt.Errorf(i18n.Tfmt("無法開啟 Hosts 檔案: %w", err), win), win)
 			}
 		})
- 
+
 		content := container.NewVBox(
 			desc,
 			container.NewGridWrap(fyne.NewSize(500, 150), container.NewScroll(richText)),
 			container.NewHBox(copyBtn, openBtn),
 		)
- 
+
 		d := dialog.NewCustom(i18n.T("Hosts 更新失敗"), i18n.T("關閉"), content, win)
 		d.Show()
 	})
