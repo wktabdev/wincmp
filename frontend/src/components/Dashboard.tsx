@@ -46,7 +46,7 @@ export default function Dashboard() {
         setScanResult(scan);
         await updateStatus();
         await updateConflicts();
-        
+
         // 檢查核心依賴是否缺失
         const missing = await CheckMissingCoreDependencies();
         setMissingCore({
@@ -182,7 +182,7 @@ export default function Dashboard() {
 
   return (
     <div className="p-6 overflow-y-auto h-full space-y-6">
-      
+
       {/* 核心依賴缺失警示橫幅 */}
       {(missingCore.caddy || missingCore.php) && !dismissBanner && (
         <div className="relative bg-red-500/10 border border-red-500/20 backdrop-blur-md rounded-xl p-4 pr-10 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 shadow-lg shadow-red-950/5">
@@ -258,7 +258,7 @@ export default function Dashboard() {
               const hasMariaDB = !!scanResult?.MariaDBList?.length;
               const hasPHP = !!scanResult?.PHPList?.length;
               const hasMailpit = !!scanResult?.MailpitList?.length;
-              
+
               let readyCount = 0;
               if (hasCaddy) readyCount++;
               if (hasMariaDB) readyCount++;
@@ -273,7 +273,7 @@ export default function Dashboard() {
 
               return (
                 <>
-                  <span className={`text-2xl font-black tracking-tight ${readyCount === 4 ? 'text-white' : 'text-yellow-400'}`}>
+                  <span className={`text-xl font-black tracking-tight ${readyCount === 4 ? 'text-white' : 'text-yellow-400'}`}>
                     {readyCount} / 4 已就緒
                   </span>
                   <p className="text-[10px] text-gray-500 mt-2 font-medium">
@@ -297,7 +297,7 @@ export default function Dashboard() {
               const hasConflict = conflicts.length > 0;
               return (
                 <>
-                  <span className={`text-2xl font-black tracking-tight ${hasConflict ? 'text-red-400' : 'text-green-400'}`}>
+                  <span className={`text-xl font-black tracking-tight ${hasConflict ? 'text-red-400' : 'text-green-400'}`}>
                     {hasConflict ? `${conflicts.length} 個衝突` : '無埠口衝突'}
                   </span>
                   <p className="text-[10px] text-gray-500 mt-2 font-medium truncate">
@@ -326,7 +326,7 @@ export default function Dashboard() {
               const autoUpdate = config?.global?.auto_update_hosts;
               return (
                 <>
-                  <span className="text-2xl font-black text-white tracking-tight">{domainCount} 個網域</span>
+                  <span className="text-xl font-black text-white tracking-tight">{domainCount} 個網域</span>
                   <p className="text-[10px] text-gray-500 mt-2 font-medium">
                     Hosts 自動同步: {autoUpdate ? '開啟' : '關閉'}
                   </p>
@@ -349,7 +349,7 @@ export default function Dashboard() {
               const rate = total > 0 ? Math.round((enabled / total) * 100) : 0;
               return (
                 <>
-                  <span className="text-2xl font-black text-white tracking-tight">{enabled} / {total} 啟用</span>
+                  <span className="text-xl font-black text-white tracking-tight">{enabled} / {total} 啟用</span>
                   <p className="text-[10px] text-gray-500 mt-2 font-medium">
                     專案啟用率: {rate}%
                   </p>
@@ -375,15 +375,15 @@ export default function Dashboard() {
             const loadingStart = loadingServices['caddy-start'];
             const loadingStop = loadingServices['caddy-stop'];
             const loadingReload = loadingServices['caddy-reload'];
-            
+
             return (
               <div className="bg-darkCard border border-darkBorder rounded-xl p-5 flex flex-col justify-between hover:border-gray-700/80 transition duration-200 shadow-sm relative overflow-hidden">
-                <div className="absolute top-4 right-4 flex items-center gap-1.5 select-none">
+                <div className="flex justify-end items-center gap-1.5 select-none text-[11px] mb-1.5">
                   <span className="relative flex h-2 w-2">
                     {running && <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>}
                     <span className={`relative inline-flex rounded-full h-2 w-2 ${running ? 'bg-green-500' : 'bg-gray-500'}`}></span>
                   </span>
-                  <span className={`text-[11px] font-bold ${running ? 'text-green-400' : 'text-gray-400'}`}>
+                  <span className={`font-bold ${running ? 'text-green-400' : 'text-gray-400'}`}>
                     {running ? '運行中' : '已停止'}
                   </span>
                 </div>
@@ -442,12 +442,12 @@ export default function Dashboard() {
 
             return (
               <div className="bg-darkCard border border-darkBorder rounded-xl p-5 flex flex-col justify-between hover:border-gray-700/80 transition duration-200 shadow-sm relative overflow-hidden">
-                <div className="absolute top-4 right-4 flex items-center gap-1.5 select-none">
+                <div className="flex justify-end items-center gap-1.5 select-none text-[11px] mb-1.5">
                   <span className="relative flex h-2 w-2">
                     {running && <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>}
                     <span className={`relative inline-flex rounded-full h-2 w-2 ${running ? 'bg-green-500' : 'bg-gray-500'}`}></span>
                   </span>
-                  <span className={`text-[11px] font-bold ${running ? 'text-green-400' : 'text-gray-400'}`}>
+                  <span className={`font-bold ${running ? 'text-green-400' : 'text-gray-400'}`}>
                     {running ? '運行中' : '已停止'}
                   </span>
                 </div>
@@ -497,12 +497,12 @@ export default function Dashboard() {
 
             return (
               <div className="bg-darkCard border border-darkBorder rounded-xl p-5 flex flex-col justify-between hover:border-gray-700/80 transition duration-200 shadow-sm relative overflow-hidden">
-                <div className="absolute top-4 right-4 flex items-center gap-1.5 select-none">
+                <div className="flex justify-end items-center gap-1.5 select-none text-[11px] mb-1.5">
                   <span className="relative flex h-2 w-2">
                     {running && <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>}
                     <span className={`relative inline-flex rounded-full h-2 w-2 ${running ? 'bg-green-500' : 'bg-gray-500'}`}></span>
                   </span>
-                  <span className={`text-[11px] font-bold ${running ? 'text-green-400' : 'text-gray-400'}`}>
+                  <span className={`font-bold ${running ? 'text-green-400' : 'text-gray-400'}`}>
                     {running ? '運行中' : '已停止'}
                   </span>
                 </div>
@@ -566,12 +566,12 @@ export default function Dashboard() {
 
               return (
                 <div key={`php-${idx}`} className="bg-darkCard border border-darkBorder rounded-xl p-5 flex flex-col justify-between hover:border-gray-700/80 transition duration-200 shadow-sm relative overflow-hidden">
-                  <div className="absolute top-4 right-4 flex items-center gap-1.5 select-none">
+                  <div className="flex justify-end items-center gap-1.5 select-none text-[11px] mb-1.5">
                     <span className="relative flex h-2 w-2">
                       {running && <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>}
                       <span className={`relative inline-flex rounded-full h-2 w-2 ${running ? 'bg-green-500' : 'bg-gray-500'}`}></span>
                     </span>
-                    <span className={`text-[11px] font-bold ${running ? 'text-green-400' : 'text-gray-400'}`}>
+                    <span className={`font-bold ${running ? 'text-green-400' : 'text-gray-400'}`}>
                       {running ? '運行中' : '已停止'}
                     </span>
                   </div>
@@ -585,7 +585,7 @@ export default function Dashboard() {
                       <p className="text-[11px] text-gray-400 font-mono">埠口: {portDisplay}</p>
                     </div>
                   </div>
-                  
+
                   {/* 進程數量選擇與啟停 */}
                   <div className="mt-4 space-y-3 pt-3 border-t border-darkBorder/40">
                     <div className="flex items-center justify-between text-xs select-none">
@@ -601,7 +601,7 @@ export default function Dashboard() {
                         ))}
                       </select>
                     </div>
-                    
+
                     <div className="flex gap-2">
                       {!running ? (
                         <button

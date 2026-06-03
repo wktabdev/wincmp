@@ -68,7 +68,7 @@ export default function App() {
 
   return (
     <div className="flex h-screen w-screen bg-darkBg text-gray-200 overflow-hidden font-sans select-none">
-      
+
       {/* 1. 左側導航 Sidebar */}
       <aside className={`bg-[#0c0c0e] border-r border-darkBorder flex flex-col justify-between select-none transition-all duration-300 ease-in-out ${isCollapsed ? 'w-16' : 'w-64'}`}>
         <div>
@@ -99,13 +99,11 @@ export default function App() {
                 key={item.id}
                 onClick={() => setActiveTab(item.id)}
                 title={isCollapsed ? item.label.split(' ')[0] : undefined}
-                className={`w-full text-left py-2.5 text-sm font-semibold flex items-center transition-all duration-150 ${
-                  isCollapsed ? 'justify-center px-0' : 'px-4 gap-3'
-                } ${
-                  activeTab === item.id
+                className={`w-full text-left py-2.5 text-sm font-semibold flex items-center transition-all duration-150 ${isCollapsed ? 'justify-center px-0' : 'px-4 gap-3'
+                  } ${activeTab === item.id
                     ? 'bg-blue-600/10 text-blue-400 border-l-[3px] border-blue-500 rounded-r-lg'
                     : 'text-gray-400 hover:bg-white/5 hover:text-gray-200 border-l-[3px] border-transparent rounded-r-lg'
-                }`}
+                  }`}
               >
                 <span className={`flex-shrink-0 ${activeTab === item.id ? 'text-blue-400' : 'text-gray-400'}`}>
                   {item.icon}
@@ -177,7 +175,7 @@ export default function App() {
 
       {/* 2. 右側主要內容區 */}
       <main className="flex-1 flex flex-col overflow-hidden">
-        
+
         {/* Topbar 搜尋與連線狀態列 */}
         <header className="h-14 border-b border-darkBorder bg-darkCard/25 backdrop-blur-md px-6 flex items-center justify-between select-none">
           <div className="flex items-center gap-3 w-64">
@@ -223,7 +221,7 @@ export default function App() {
             <Terminal size={11} className="text-blue-400" />
             <span>{showLogs ? '收起 Logs 控制台' : '打開 Logs 控制台'}</span>
           </button>
-          <span className="text-[9px] text-gray-500 font-mono">Status: Connected to Go core</span>
+          <span className="text-[9px] text-gray-500 font-mono"></span>
         </div>
 
         {/* 下半部：即時日誌區 */}
