@@ -165,6 +165,9 @@ func migrateLegacyNodeFields(cfg *WincmpConfig) {
 	}
 }
 
+// DefaultDependencyURL 是預設從遠端取得建議依賴版本的 URL
+const DefaultDependencyURL = "https://raw.githubusercontent.com/wukh1124/wincmp/main/conf/dependencies.json"
+
 // Load 從指定路徑載入 wincmp.json 設定檔
 func Load(path string) (*WincmpConfig, error) {
 	data, err := os.ReadFile(path)
@@ -193,7 +196,7 @@ func Load(path string) (*WincmpConfig, error) {
 
 	// 補全可能缺失的預設依賴更新網址
 	if cfg.Global.DependencyURL == "" {
-		cfg.Global.DependencyURL = "https://raw.githubusercontent.com/wktabdev/wincmp/main/conf/dependencies.json"
+		cfg.Global.DependencyURL = DefaultDependencyURL
 	}
 
 	// 預設語言為繁體中文

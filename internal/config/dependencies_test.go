@@ -29,8 +29,8 @@ func TestLoadDependencies_NonExistent(t *testing.T) {
 	caddy, ok := cfg["caddy"]
 	if !ok {
 		t.Error("預設設定缺少 caddy 項")
-	} else if caddy.Version != "2.7.6" {
-		t.Errorf("預期 caddy 版本為 2.7.6，實際為 %s", caddy.Version)
+	} else if caddy.Version != DefaultDependencies["caddy"].Version {
+		t.Errorf("預期 caddy 版本為 %s，實際為 %s", DefaultDependencies["caddy"].Version, caddy.Version)
 	}
 
 	// 驗證檔案是否真的寫入磁碟了
