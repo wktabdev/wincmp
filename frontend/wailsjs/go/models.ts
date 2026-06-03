@@ -201,6 +201,33 @@ export namespace config {
 
 }
 
+export namespace main {
+	
+	export class ProjectDetectResult {
+	    name: string;
+	    domains: string[];
+	    type: string;
+	    runtime_type: string;
+	    runtime_port: number;
+	    php_version: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ProjectDetectResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.domains = source["domains"];
+	        this.type = source["type"];
+	        this.runtime_type = source["runtime_type"];
+	        this.runtime_port = source["runtime_port"];
+	        this.php_version = source["php_version"];
+	    }
+	}
+
+}
+
 export namespace scanner {
 	
 	export class PHPVersionInfo {

@@ -9,7 +9,8 @@ import {
   StopProjectRuntime,
   ReloadCaddy,
   OpenFolder,
-  SelectFolder
+  SelectFolder,
+  DetectProjectPath
 } from '../../wailsjs/go/main/App';
 
 interface Project {
@@ -38,6 +39,8 @@ export default function Projects() {
   const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [editIndex, setEditIndex] = useState<number | null>(null); // null 代表新增
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isDetecting, setIsDetecting] = useState(false);
+  const [detected, setDetected] = useState(false);
 
   // 初始化專案類型與 Runtime 類型對照表
   const projectTypes = [
@@ -160,6 +163,7 @@ export default function Projects() {
   const handleOpenEditModal = (proj: Project | null, idx: number | null) => {
     if (proj) {
       setEditingProject({ ...proj });
+      setDetected(true);
     } else {
       // 預設全新專案結構
       setEditingProject({
@@ -179,9 +183,38 @@ export default function Projects() {
         command: '',
         use_wincmp_bin: true
       });
+      setDetected(false);
     }
     setEditIndex(idx);
     setIsModalOpen(true);
+    setIsDetecting(false);
+  };
+
+  const runAutoDetection = async (path: string) => {
+    if (!editingProject || !path.trim()) return;
+    setIsDetecting(true);
+    try {
+      const res = await DetectProjectPath(path);
+      if (res) {
+        setEditingProject({
+          ...editingProject,
+          root_path: path,
+          name: res.name,
+          domains: res.domains && res.domains.length > 0 ? res.domains : [`local-${res.name.toLowerCase()}.test`],
+          type: res.type || 'static',
+          runtime_type: res.runtime_type || 'none',
+          runtime_port: res.runtime_port || 3000,
+          php_version: res.php_version || scanResult?.PHPList?.[0]?.MajorMin || '',
+          runtime_version: res.runtime_type === 'bun' ? scanResult?.BunList?.[0]?.Version : scanResult?.NodeList?.[0]?.Version || ''
+        });
+        setDetected(true);
+      }
+    } catch (err) {
+      console.error("自動偵測專案失敗:", err);
+      alert(`自動偵測專案失敗: ${err}`);
+    } finally {
+      setIsDetecting(false);
+    }
   };
 
   const handleSelectRootPath = async () => {
@@ -189,7 +222,10 @@ export default function Projects() {
     try {
       const path = await SelectFolder();
       if (path) {
-        setEditingProject({ ...editingProject, root_path: path });
+        setEditingProject(prev => prev ? { ...prev, root_path: path } : null);
+        if (editIndex === null) {
+          await runAutoDetection(path);
+        }
       }
     } catch (err) {
       console.error("選擇目錄失敗:", err);
@@ -457,19 +493,6 @@ export default function Projects() {
                 {/* 1. 基本設定 */}
                 <div className="space-y-4">
                   <h4 className="text-[11px] font-bold text-blue-400 uppercase tracking-wider select-none">基本設定 (General)</h4>
-                  
-                  {/* 專案名稱 */}
-                  <div className="space-y-1.5">
-                    <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-500">專案名稱</label>
-                    <input
-                      type="text"
-                      disabled={editIndex !== null}
-                      value={editingProject.name}
-                      onChange={(e) => setEditingProject({ ...editingProject, name: e.target.value })}
-                      placeholder="例如: my-laravel-app"
-                      className="w-full bg-darkInput border border-darkBorder text-gray-100 rounded-lg px-3 py-2 outline-none focus:border-blue-500 disabled:opacity-50 transition"
-                    />
-                  </div>
 
                   {/* 專案目錄 */}
                   <div className="space-y-1.5">
@@ -479,6 +502,16 @@ export default function Projects() {
                         type="text"
                         value={editingProject.root_path}
                         onChange={(e) => setEditingProject({ ...editingProject, root_path: e.target.value })}
+                        onBlur={(e) => {
+                          if (editIndex === null && e.target.value.trim()) {
+                            runAutoDetection(e.target.value.trim());
+                          }
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && editIndex === null && (e.target as HTMLInputElement).value.trim()) {
+                            runAutoDetection((e.target as HTMLInputElement).value.trim());
+                          }
+                        }}
                         placeholder="請選擇或填寫完整目錄路徑..."
                         className="flex-1 bg-darkInput border border-darkBorder text-gray-100 rounded-lg px-3 py-2 outline-none focus:border-blue-500 transition font-mono"
                       />
@@ -490,184 +523,219 @@ export default function Projects() {
                       </button>
                     </div>
                   </div>
-                </div>
-
-                {/* 2. 類型與執行環境 */}
-                <div className="space-y-4 border-t border-darkBorder/40 pt-4">
-                  <h4 className="text-[11px] font-bold text-indigo-400 uppercase tracking-wider select-none">執行環境 (Runtime)</h4>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-1.5">
-                      <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-500">專案框架 / 類型</label>
-                      <select
-                        value={editingProject.type}
-                        onChange={(e) => handleTypeChange(e.target.value)}
-                        className="w-full bg-darkInput border border-darkBorder text-gray-100 rounded-lg px-3 py-2 outline-none focus:border-blue-500 transition cursor-pointer font-semibold"
-                      >
-                        {projectTypes.map(t => (
-                          <option key={t.value} value={t.value}>{t.label}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="space-y-1.5">
-                      <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-500">執行器 (Runtime)</label>
-                      <select
-                        value={editingProject.runtime_type}
-                        onChange={(e) => setEditingProject({ ...editingProject, runtime_type: e.target.value })}
-                        className="w-full bg-darkInput border border-darkBorder text-gray-100 rounded-lg px-3 py-2 outline-none focus:border-blue-500 transition cursor-pointer font-semibold"
-                      >
-                        {runtimeTypes.map(t => (
-                          <option key={t.value} value={t.value}>{t.label}</option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-
-                  {/* PHP 版本 */}
-                  {editingProject.type === 'laravel' && (
-                    <div className="space-y-1.5">
-                      <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-500">PHP 執行版本</label>
-                      <select
-                        value={editingProject.php_version}
-                        onChange={(e) => setEditingProject({ ...editingProject, php_version: e.target.value })}
-                        className="w-full bg-darkInput border border-darkBorder text-gray-100 rounded-lg px-3 py-2 outline-none focus:border-blue-500 transition cursor-pointer font-semibold"
-                      >
-                        <option value="">請選擇對應 PHP 版本...</option>
-                        {scanResult?.PHPList?.map((p: any) => (
-                          <option key={p.MajorMin} value={p.MajorMin}>PHP {p.MajorMin} (偵測到 {p.Version})</option>
-                        ))}
-                      </select>
+                  
+                  {/* 專案名稱 */}
+                  {(editIndex !== null || detected) && (
+                    <div className="space-y-1.5 animate-fade-in">
+                      <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-500">專案名稱</label>
+                      <input
+                        type="text"
+                        disabled={editIndex !== null}
+                        value={editingProject.name}
+                        onChange={(e) => setEditingProject({ ...editingProject, name: e.target.value })}
+                        placeholder="例如: my-laravel-app"
+                        className="w-full bg-darkInput border border-darkBorder text-gray-100 rounded-lg px-3 py-2 outline-none focus:border-blue-500 disabled:opacity-50 transition"
+                      />
                     </div>
                   )}
+                </div>
 
-                  {/* Runtime 進階配置 */}
-                  {isRuntimeProject(editingProject.type) && (
-                    <div className="border border-darkBorder rounded-xl p-4 bg-[#0a0a0c]/40 space-y-4">
-                      <div className="font-semibold text-gray-200 text-xs flex items-center gap-1.5 border-b border-darkBorder pb-2">
-                        <Settings size={12} className="text-blue-400" /> Runtime 運行細節設定
-                      </div>
+                {/* 偵測中 Loading 骨架屏 / 動畫 */}
+                {isDetecting && (
+                  <div className="p-4 bg-darkInput border border-darkBorder rounded-xl flex items-center justify-center gap-3">
+                    <div className="animate-spin rounded-full h-4 w-4 border-2 border-blue-500 border-t-transparent"></div>
+                    <span className="text-[11px] text-gray-400 font-medium">🔄 正在偵測專案結構與配置，請稍候...</span>
+                  </div>
+                )}
 
-                      <div className="grid grid-cols-2 gap-3">
-                        <div className="space-y-1">
-                          <label className="block text-[10px] text-gray-500 font-bold uppercase">執行 Port</label>
-                          <input
-                            type="number"
-                            value={editingProject.runtime_port || 3000}
-                            onChange={(e) => setEditingProject({ ...editingProject, runtime_port: parseInt(e.target.value) })}
-                            className="w-full bg-darkInput border border-darkBorder text-gray-100 rounded-lg px-2.5 py-1.5 outline-none focus:border-blue-500 transition font-mono"
-                          />
-                        </div>
-                        <div className="space-y-1">
-                          <label className="block text-[10px] text-gray-500 font-bold uppercase">運行模式</label>
+                {/* 新增專案時，若尚未偵測，顯示引導文字 */}
+                {editIndex === null && !detected && !isDetecting && (
+                  <div className="p-4 border border-dashed border-darkBorder rounded-xl bg-white/[0.01] text-center text-gray-500 py-8 select-none">
+                    <span className="text-[11px]">💡 請選擇專案根目錄，系統將自動偵測並帶入配置。</span>
+                  </div>
+                )}
+
+                {/* 偵測成功或編輯模式下才顯示的欄位 */}
+                {(editIndex !== null || detected) && (
+                  <div className="space-y-5 animate-fade-in">
+                    {/* 2. 類型與執行環境 */}
+                    <div className="space-y-4 border-t border-darkBorder/40 pt-4">
+                      <h4 className="text-[11px] font-bold text-indigo-400 uppercase tracking-wider select-none">執行環境 (Runtime)</h4>
+
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-1.5">
+                          <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-500">專案框架 / 類型</label>
                           <select
-                            value={editingProject.runtime_mode || 'Background'}
-                            onChange={(e) => setEditingProject({ ...editingProject, runtime_mode: e.target.value })}
-                            className="w-full bg-darkInput border border-darkBorder text-gray-100 rounded-lg px-2.5 py-1.5 outline-none focus:border-blue-500 transition cursor-pointer font-semibold"
+                            value={editingProject.type}
+                            onChange={(e) => handleTypeChange(e.target.value)}
+                            className="w-full bg-darkInput border border-darkBorder text-gray-100 rounded-lg px-3 py-2 outline-none focus:border-blue-500 transition cursor-pointer font-semibold"
                           >
-                            <option value="Background">背景執行 (Background)</option>
-                            <option value="Terminal">終端執行 (Terminal)</option>
+                            {projectTypes.map(t => (
+                              <option key={t.value} value={t.value}>{t.label}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="space-y-1.5">
+                          <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-500">執行器 (Runtime)</label>
+                          <select
+                            value={editingProject.runtime_type}
+                            onChange={(e) => setEditingProject({ ...editingProject, runtime_type: e.target.value })}
+                            className="w-full bg-darkInput border border-darkBorder text-gray-100 rounded-lg px-3 py-2 outline-none focus:border-blue-500 transition cursor-pointer font-semibold"
+                          >
+                            {runtimeTypes.map(t => (
+                              <option key={t.value} value={t.value}>{t.label}</option>
+                            ))}
                           </select>
                         </div>
                       </div>
 
-                      {/* Node/Bun 專屬配置 */}
-                      {['node', 'bun', 'auto'].includes(editingProject.runtime_type || '') && (
-                        <div className="space-y-3 pt-2">
-                          <div className="flex items-center gap-2 select-none">
-                            <input
-                              type="checkbox"
-                              id="useWinCMPBin"
-                              checked={editingProject.use_wincmp_bin}
-                              onChange={(e) => setEditingProject({ ...editingProject, use_wincmp_bin: e.target.checked })}
-                              className="w-3.5 h-3.5 bg-darkInput border-darkBorder rounded text-blue-500 accent-blue-500 cursor-pointer"
-                            />
-                            <label htmlFor="useWinCMPBin" className="text-[11px] text-gray-400 cursor-pointer font-medium">使用 WinCMP 內建執行檔 (Bundled Runtime)</label>
-                          </div>
-                          
-                          {editingProject.use_wincmp_bin && (
-                            <div className="space-y-1">
-                              <label className="block text-[10px] text-gray-500 font-bold uppercase">選擇內建版本</label>
-                              <select
-                                value={editingProject.runtime_version || ''}
-                                onChange={(e) => setEditingProject({ ...editingProject, runtime_version: e.target.value })}
-                                className="w-full bg-darkInput border border-darkBorder text-gray-100 rounded-lg px-2.5 py-1.5 outline-none focus:border-blue-500 transition text-[11px] cursor-pointer"
-                              >
-                                {(editingProject.runtime_type === 'bun' ? scanResult?.BunList : scanResult?.NodeList)?.map((r: any) => (
-                                  <option key={r.Version} value={r.Version}>{r.Version}</option>
-                                ))}
-                                {!(editingProject.runtime_type === 'bun' ? scanResult?.BunList : scanResult?.NodeList)?.length && (
-                                  <option value="">無可用版本 (請確認 ./bin/)</option>
-                                )}
-                              </select>
-                            </div>
-                          )}
+                      {/* PHP 版本 */}
+                      {editingProject.type === 'laravel' && (
+                        <div className="space-y-1.5">
+                          <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-500">PHP 執行版本</label>
+                          <select
+                            value={editingProject.php_version}
+                            onChange={(e) => setEditingProject({ ...editingProject, php_version: e.target.value })}
+                            className="w-full bg-darkInput border border-darkBorder text-gray-100 rounded-lg px-3 py-2 outline-none focus:border-blue-500 transition cursor-pointer font-semibold"
+                          >
+                            <option value="">請選擇對應 PHP 版本...</option>
+                            {scanResult?.PHPList?.map((p: any) => (
+                              <option key={p.MajorMin} value={p.MajorMin}>PHP {p.MajorMin} (偵測到 {p.Version})</option>
+                            ))}
+                          </select>
                         </div>
                       )}
 
-                      {/* 自訂啟動命令 */}
-                      <div className="space-y-1.5">
-                        <label className="block text-[10px] text-gray-500 font-bold uppercase">自訂啟動指令 (可選，空白將使用預設)</label>
-                        <input
-                          type="text"
-                          value={editingProject.command || ''}
-                          onChange={(e) => setEditingProject({ ...editingProject, command: e.target.value })}
-                          placeholder="例如: npm run dev -- --port 3000"
-                          className="w-full bg-darkInput border border-darkBorder text-gray-100 rounded-lg px-2.5 py-1.5 outline-none focus:border-blue-500 transition font-mono"
-                        />
+                      {/* Runtime 進階配置 */}
+                      {isRuntimeProject(editingProject.type) && (
+                        <div className="border border-darkBorder rounded-xl p-4 bg-[#0a0a0c]/40 space-y-4">
+                          <div className="font-semibold text-gray-200 text-xs flex items-center gap-1.5 border-b border-darkBorder pb-2">
+                            <Settings size={12} className="text-blue-400" /> Runtime 運行細節設定
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-3">
+                            <div className="space-y-1">
+                              <label className="block text-[10px] text-gray-500 font-bold uppercase">執行 Port</label>
+                              <input
+                                type="number"
+                                value={editingProject.runtime_port || 3000}
+                                onChange={(e) => setEditingProject({ ...editingProject, runtime_port: parseInt(e.target.value) })}
+                                className="w-full bg-darkInput border border-darkBorder text-gray-100 rounded-lg px-2.5 py-1.5 outline-none focus:border-blue-500 transition font-mono"
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <label className="block text-[10px] text-gray-500 font-bold uppercase">運行模式</label>
+                              <select
+                                value={editingProject.runtime_mode || 'Background'}
+                                onChange={(e) => setEditingProject({ ...editingProject, runtime_mode: e.target.value })}
+                                className="w-full bg-darkInput border border-darkBorder text-gray-100 rounded-lg px-2.5 py-1.5 outline-none focus:border-blue-500 transition cursor-pointer font-semibold"
+                              >
+                                <option value="Background">背景執行 (Background)</option>
+                                <option value="Terminal">終端執行 (Terminal)</option>
+                              </select>
+                            </div>
+                          </div>
+
+                          {/* Node/Bun 專屬配置 */}
+                          {['node', 'bun', 'auto'].includes(editingProject.runtime_type || '') && (
+                            <div className="space-y-3 pt-2">
+                              <div className="flex items-center gap-2 select-none">
+                                <input
+                                  type="checkbox"
+                                  id="useWinCMPBin"
+                                  checked={editingProject.use_wincmp_bin}
+                                  onChange={(e) => setEditingProject({ ...editingProject, use_wincmp_bin: e.target.checked })}
+                                  className="w-3.5 h-3.5 bg-darkInput border-darkBorder rounded text-blue-500 accent-blue-500 cursor-pointer"
+                                />
+                                <label htmlFor="useWinCMPBin" className="text-[11px] text-gray-400 cursor-pointer font-medium">使用 WinCMP 內建執行檔 (Bundled Runtime)</label>
+                              </div>
+                              
+                              {editingProject.use_wincmp_bin && (
+                                <div className="space-y-1">
+                                  <label className="block text-[10px] text-gray-500 font-bold uppercase">選擇內建版本</label>
+                                  <select
+                                    value={editingProject.runtime_version || ''}
+                                    onChange={(e) => setEditingProject({ ...editingProject, runtime_version: e.target.value })}
+                                    className="w-full bg-darkInput border border-darkBorder text-gray-100 rounded-lg px-2.5 py-1.5 outline-none focus:border-blue-500 transition text-[11px] cursor-pointer"
+                                  >
+                                    {(editingProject.runtime_type === 'bun' ? scanResult?.BunList : scanResult?.NodeList)?.map((r: any) => (
+                                      <option key={r.Version} value={r.Version}>{r.Version}</option>
+                                    ))}
+                                    {!(editingProject.runtime_type === 'bun' ? scanResult?.BunList : scanResult?.NodeList)?.length && (
+                                      <option value="">無可用版本 (請確認 ./bin/)</option>
+                                    )}
+                                  </select>
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          {/* 自訂啟動命令 */}
+                          <div className="space-y-1.5">
+                            <label className="block text-[10px] text-gray-500 font-bold uppercase">自訂啟動指令 (可選，空白將使用預設)</label>
+                            <input
+                              type="text"
+                              value={editingProject.command || ''}
+                              onChange={(e) => setEditingProject({ ...editingProject, command: e.target.value })}
+                              placeholder="例如: npm run dev -- --port 3000"
+                              className="w-full bg-darkInput border border-darkBorder text-gray-100 rounded-lg px-2.5 py-1.5 outline-none focus:border-blue-500 transition font-mono"
+                            />
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* 3. 網域別名設定 */}
+                    <div className="space-y-4 border-t border-darkBorder/40 pt-4">
+                      <h4 className="text-[11px] font-bold text-teal-400 uppercase tracking-wider select-none">網域別名 (Domains)</h4>
+                      
+                      <div className="space-y-2">
+                        {editingProject.domains.map((dom, dIdx) => (
+                          <div key={dIdx} className="flex gap-2">
+                            <input
+                              type="text"
+                              value={dom}
+                              onChange={(e) => handleDomainChange(dIdx, e.target.value)}
+                              placeholder="例如: my-site.test"
+                              className="flex-1 bg-darkInput border border-darkBorder text-gray-100 rounded-lg px-3 py-2 outline-none focus:border-blue-500 transition font-mono"
+                            />
+                            {editingProject.domains.length > 1 && (
+                              <button
+                                onClick={() => handleRemoveDomain(dIdx)}
+                                className="px-3 py-2 bg-red-900 bg-opacity-25 hover:bg-opacity-50 text-red-400 border border-red-900 border-opacity-40 rounded-lg transition font-semibold"
+                              >
+                                移除
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                        <button
+                          onClick={handleAddDomain}
+                          className="text-[11px] text-blue-400 hover:text-blue-300 font-semibold flex items-center gap-1 transition"
+                        >
+                          + 新增別名網域
+                        </button>
                       </div>
                     </div>
-                  )}
-                </div>
 
-                {/* 3. 網域別名設定 */}
-                <div className="space-y-4 border-t border-darkBorder/40 pt-4">
-                  <h4 className="text-[11px] font-bold text-teal-400 uppercase tracking-wider select-none">網域別名 (Domains)</h4>
-                  
-                  <div className="space-y-2">
-                    {editingProject.domains.map((dom, dIdx) => (
-                      <div key={dIdx} className="flex gap-2">
-                        <input
-                          type="text"
-                          value={dom}
-                          onChange={(e) => handleDomainChange(dIdx, e.target.value)}
-                          placeholder="例如: my-site.test"
-                          className="flex-1 bg-darkInput border border-darkBorder text-gray-100 rounded-lg px-3 py-2 outline-none focus:border-blue-500 transition font-mono"
-                        />
-                        {editingProject.domains.length > 1 && (
-                          <button
-                            onClick={() => handleRemoveDomain(dIdx)}
-                            className="px-3 py-2 bg-red-900 bg-opacity-25 hover:bg-opacity-50 text-red-400 border border-red-900 border-opacity-40 rounded-lg transition font-semibold"
-                          >
-                            移除
-                          </button>
-                        )}
+                    {/* 4. SSL 憑證選項 */}
+                    <div className="flex items-center justify-between border border-darkBorder p-4 rounded-xl bg-[#0a0a0c]/40 space-y-0 border-t border-darkBorder/40">
+                      <div className="flex items-center gap-3">
+                        <Shield size={16} className="text-blue-500" />
+                        <div>
+                          <div className="font-semibold text-gray-200 text-[11px]">啟用 HTTPS 安全憑證</div>
+                          <div className="text-[10px] text-gray-500 mt-0.5">自動套用 Caddy 內部自簽憑證</div>
+                        </div>
                       </div>
-                    ))}
-                    <button
-                      onClick={handleAddDomain}
-                      className="text-[11px] text-blue-400 hover:text-blue-300 font-semibold flex items-center gap-1 transition"
-                    >
-                      + 新增別名網域
-                    </button>
-                  </div>
-                </div>
-
-                {/* 4. SSL 憑證選項 */}
-                <div className="flex items-center justify-between border border-darkBorder p-4 rounded-xl bg-[#0a0a0c]/40 space-y-0 border-t border-darkBorder/40">
-                  <div className="flex items-center gap-3">
-                    <Shield size={16} className="text-blue-500" />
-                    <div>
-                      <div className="font-semibold text-gray-200 text-[11px]">啟用 HTTPS 安全憑證</div>
-                      <div className="text-[10px] text-gray-500 mt-0.5">自動套用 Caddy 內部自簽憑證</div>
+                      <input
+                        type="checkbox"
+                        checked={editingProject.use_ssl}
+                        onChange={(e) => setEditingProject({ ...editingProject, use_ssl: e.target.checked })}
+                        className="w-3.5 h-3.5 bg-darkInput border-darkBorder rounded text-blue-500 accent-blue-500 cursor-pointer"
+                      />
                     </div>
                   </div>
-                  <input
-                    type="checkbox"
-                    checked={editingProject.use_ssl}
-                    onChange={(e) => setEditingProject({ ...editingProject, use_ssl: e.target.checked })}
-                    className="w-3.5 h-3.5 bg-darkInput border-darkBorder rounded text-blue-500 accent-blue-500 cursor-pointer"
-                  />
-                </div>
+                )}
               </div>
 
               {/* Drawer Footer */}
@@ -678,12 +746,14 @@ export default function Projects() {
                 >
                   取消
                 </button>
-                <button
-                  onClick={handleSaveProject}
-                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold transition"
-                >
-                  儲存設定
-                </button>
+                {(editIndex !== null || detected) && (
+                  <button
+                    onClick={handleSaveProject}
+                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold transition"
+                  >
+                    儲存設定
+                  </button>
+                )}
               </div>
             </div>
           </div>

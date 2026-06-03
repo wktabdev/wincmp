@@ -2,10 +2,13 @@ package main
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -14,6 +17,7 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
 	"wincmp/internal/config"
+	"wincmp/internal/detect"
 	"wincmp/internal/hosts"
 	"wincmp/internal/preset"
 	"wincmp/internal/process"
@@ -776,5 +780,185 @@ func (a *App) OpenInHeidiSQL() error {
 
 	go cmd.Wait()
 	return nil
+}
+
+// ==========================================
+// 6. 專案路徑與框架自動偵測 API
+// ==========================================
+
+// ProjectDetectResult 專案路徑偵測結果
+type ProjectDetectResult struct {
+	Name        string   `json:"name"`
+	Domains     []string `json:"domains"`
+	Type        string   `json:"type"`
+	RuntimeType string   `json:"runtime_type"`
+	RuntimePort int      `json:"runtime_port"`
+	PHPVersion  string   `json:"php_version"`
+}
+
+// laravelPHPMapping 結構體用於解析 Laravel 與 PHP 版本的對應
+type laravelPHPMapping struct {
+	Mappings []struct {
+		Laravel string `json:"laravel"`
+		PHP     string `json:"php"`
+	} `json:"mappings"`
+	Fallback string `json:"fallback"`
+}
+
+// DetectProjectPath 偵測專案物理目錄的資訊，包含自動生成的名稱、網域別名、專案類型與執行環境等
+func (a *App) DetectProjectPath(path string) (*ProjectDetectResult, error) {
+	if path == "" {
+		return nil, fmt.Errorf("路徑不能為空")
+	}
+
+	fi, err := os.Stat(path)
+	if err != nil {
+		return nil, fmt.Errorf("路徑無效或不存在: %w", err)
+	}
+	if !fi.IsDir() {
+		return nil, fmt.Errorf("選擇的路徑不是一個有效的資料夾")
+	}
+
+	folderName := filepath.Base(path)
+
+	// 1. 生成專案名稱：底線與空格轉橫線，並進行檔名/安全字元清洗
+	sanitizedName := strings.ReplaceAll(folderName, "_", "-")
+	sanitizedName = config.SanitizeProjectName(sanitizedName)
+
+	// 2. 生成網域：僅保留英數字與橫線，前後加 local- 與 .test
+	domainName := strings.ToLower(folderName)
+	domainName = strings.ReplaceAll(domainName, "_", "-")
+	reg := regexp.MustCompile(`[^a-z0-9]+`)
+	domainName = reg.ReplaceAllString(domainName, "-")
+	domainName = strings.Trim(domainName, "-")
+	if domainName == "" {
+		domainName = "project"
+	}
+	recommendedDomain := fmt.Sprintf("local-%s.test", domainName)
+
+	// 3. 偵測 Preset 專案類型與執行環境
+	detRes := preset.DetectProjectPreset(path)
+	projectType := detRes.Type
+	runtimeType := detRes.Runtime
+	runtimePort := detRes.Port
+	phpVersion := ""
+
+	// 4. Laravel PHP 專屬匹配
+	if projectType == preset.TypeLaravel {
+		laravelRes := detect.DetectLaravel(path)
+		mapping, fallback := a.loadLaravelPHPMapping()
+		phpVersion = a.getRecommendedPHPVersion(laravelRes.Version, mapping, fallback)
+	}
+
+	return &ProjectDetectResult{
+		Name:        sanitizedName,
+		Domains:     []string{recommendedDomain},
+		Type:        projectType,
+		RuntimeType: runtimeType,
+		RuntimePort: runtimePort,
+		PHPVersion:  phpVersion,
+	}, nil
+}
+
+// loadLaravelPHPMapping 載入 Laravel PHP 版本推薦映射設定
+func (a *App) loadLaravelPHPMapping() (map[string]string, string) {
+	mappingFile := filepath.Join(a.baseDir, "conf", "php", "laravel-php-mapping.json")
+	data, err := os.ReadFile(mappingFile)
+	if err != nil {
+		return nil, "8.2"
+	}
+
+	var m laravelPHPMapping
+	if err := json.Unmarshal(data, &m); err != nil {
+		return nil, "8.2"
+	}
+
+	result := make(map[string]string)
+	for _, item := range m.Mappings {
+		result[item.Laravel] = item.PHP
+	}
+	return result, m.Fallback
+}
+
+// getRecommendedPHPVersion 依據 Laravel 版本取得推薦的 PHP 版本，並驗證是否已在本機安裝
+func (a *App) getRecommendedPHPVersion(laravelVersion string, mapping map[string]string, fallback string) string {
+	if laravelVersion == "" {
+		return a.validatePHPMajorVersion(fallback)
+	}
+
+	if php, ok := mapping[laravelVersion]; ok {
+		validated := a.validatePHPMajorVersion(php)
+		if validated != "" {
+			return validated
+		}
+	}
+
+	if strings.HasPrefix(laravelVersion, "<") {
+		if php, ok := mapping["<"+a.laravelMajorStr(laravelVersion)]; ok {
+			validated := a.validatePHPMajorVersion(php)
+			if validated != "" {
+				return validated
+			}
+		}
+		return a.validatePHPMajorVersion(fallback)
+	}
+
+	if strings.HasPrefix(laravelVersion, ">=") || strings.HasPrefix(laravelVersion, ">") {
+		if php, ok := mapping[">="+a.laravelMajorStr(laravelVersion)]; ok {
+			validated := a.validatePHPMajorVersion(php)
+			if validated != "" {
+				return validated
+			}
+		}
+	}
+
+	laravelMajor := a.parseLaravelMajor(laravelVersion)
+	if laravelMajor == 0 {
+		return a.validatePHPMajorVersion(fallback)
+	}
+
+	for laravelMajor > 0 {
+		key := strconv.Itoa(laravelMajor) + ".x"
+		if php, ok := mapping[key]; ok {
+			validated := a.validatePHPMajorVersion(php)
+			if validated != "" {
+				return validated
+			}
+		}
+		laravelMajor--
+	}
+
+	return a.validatePHPMajorVersion(fallback)
+}
+
+func (a *App) laravelMajorStr(version string) string {
+	version = strings.TrimPrefix(version, "<")
+	version = strings.TrimPrefix(version, ">=")
+	version = strings.TrimPrefix(version, ">")
+	return strings.TrimSuffix(version, ".x")
+}
+
+func (a *App) parseLaravelMajor(version string) int {
+	majorStr := a.laravelMajorStr(version)
+	if majorStr == "" {
+		return 0
+	}
+	major, err := strconv.Atoi(majorStr)
+	if err != nil {
+		return 0
+	}
+	return major
+}
+
+func (a *App) validatePHPMajorVersion(majorVersion string) string {
+	if a.scanRes == nil {
+		return ""
+	}
+	for _, info := range a.scanRes.PHPList {
+		if info.MajorMin == majorVersion {
+			return majorVersion
+		}
+	}
+	return ""
 }
 
