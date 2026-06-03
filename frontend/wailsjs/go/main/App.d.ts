@@ -7,6 +7,8 @@ import {scanner} from '../models';
 
 export function CheckMissingCoreDependencies():Promise<Record<string, boolean>>;
 
+export function CheckPortConflicts():Promise<Record<string, boolean>>;
+
 export function DetectProjectPath(arg1:string):Promise<main.ProjectDetectResult>;
 
 export function DownloadDependency(arg1:string):Promise<void>;

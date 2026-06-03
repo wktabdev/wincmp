@@ -6,6 +6,10 @@ export function CheckMissingCoreDependencies() {
   return window['go']['main']['App']['CheckMissingCoreDependencies']();
 }
 
+export function CheckPortConflicts() {
+  return window['go']['main']['App']['CheckPortConflicts']();
+}
+
 export function DetectProjectPath(arg1) {
   return window['go']['main']['App']['DetectProjectPath'](arg1);
 }

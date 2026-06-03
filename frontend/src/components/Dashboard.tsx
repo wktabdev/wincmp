@@ -15,7 +15,8 @@ import {
   StopMailpit,
   StartPHP,
   StopPHP,
-  CheckMissingCoreDependencies
+  CheckMissingCoreDependencies,
+  CheckPortConflicts
 } from '../../wailsjs/go/main/App';
 import { scanner } from '../../wailsjs/go/models';
 import DependencyManager from './DependencyManager';
@@ -33,7 +34,7 @@ export default function Dashboard() {
     php: false
   });
   const [dismissBanner, setDismissBanner] = useState(false);
-  const [systemResources, setSystemResources] = useState({ cpu: 0, memory: 0 });
+  const [portConflicts, setPortConflicts] = useState<Record<string, boolean>>({});
 
   // 載入基本設定與掃描結果
   useEffect(() => {
@@ -44,6 +45,7 @@ export default function Dashboard() {
         const scan = await GetScanResult();
         setScanResult(scan);
         await updateStatus();
+        await updateConflicts();
         
         // 檢查核心依賴是否缺失
         const missing = await CheckMissingCoreDependencies();
@@ -56,27 +58,13 @@ export default function Dashboard() {
       }
     }
     initData();
-
-    // 訂閱 Go 端推送的 CPU / RAM 資源佔用
-    const handleResourceUpdate = (data: any) => {
-      if (data) {
-        setSystemResources({
-          cpu: data.cpu || 0,
-          memory: data.memory || 0
-        });
-      }
-    };
-    EventsOn('resource_usage', handleResourceUpdate);
-
-    return () => {
-      EventsOff('resource_usage');
-    };
   }, []);
 
   // 定時輪詢狀態 (每 2 秒)
   useEffect(() => {
     const timer = setInterval(() => {
       updateStatus();
+      updateConflicts();
     }, 2000);
     return () => clearInterval(timer);
   }, [scanResult]);
@@ -87,6 +75,15 @@ export default function Dashboard() {
       setServicesStatus(status);
     } catch (err) {
       console.error("更新服務狀態失敗:", err);
+    }
+  };
+
+  const updateConflicts = async () => {
+    try {
+      const conflicts = await CheckPortConflicts();
+      setPortConflicts(conflicts || {});
+    } catch (err) {
+      console.error("更新埠口衝突失敗:", err);
     }
   };
 
@@ -249,61 +246,116 @@ export default function Dashboard() {
 
       {/* 頂部 Overview Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 select-none">
-        {/* Card 1: CPU */}
+        {/* Card 1: 依賴元件狀態 */}
         <div className="bg-darkCard border border-darkBorder rounded-xl p-4 flex flex-col justify-between shadow-sm">
           <div className="flex items-center justify-between text-gray-400">
-            <span className="text-xs font-semibold uppercase tracking-wider">CPU 佔用</span>
-            <Cpu size={16} className="text-blue-400" />
+            <span className="text-xs font-semibold uppercase tracking-wider">依賴元件狀態</span>
+            <Package size={16} className="text-blue-400" />
           </div>
           <div className="mt-2.5">
-            <span className="text-2xl font-black text-white tracking-tight">{systemResources.cpu.toFixed(1)}%</span>
-            <div className="w-full h-1 bg-darkInput rounded-full overflow-hidden mt-2">
-              <div
-                style={{ width: `${Math.min(systemResources.cpu * 5, 100)}%` }}
-                className="h-full bg-blue-500 rounded-full transition-all duration-500"
-              />
-            </div>
+            {(() => {
+              const hasCaddy = !!scanResult?.CaddyList?.length;
+              const hasMariaDB = !!scanResult?.MariaDBList?.length;
+              const hasPHP = !!scanResult?.PHPList?.length;
+              const hasMailpit = !!scanResult?.MailpitList?.length;
+              
+              let readyCount = 0;
+              if (hasCaddy) readyCount++;
+              if (hasMariaDB) readyCount++;
+              if (hasPHP) readyCount++;
+              if (hasMailpit) readyCount++;
+
+              const missing = [];
+              if (!hasCaddy) missing.push('Caddy');
+              if (!hasPHP) missing.push('PHP');
+              if (!hasMariaDB) missing.push('MariaDB');
+              if (!hasMailpit) missing.push('Mailpit');
+
+              return (
+                <>
+                  <span className={`text-2xl font-black tracking-tight ${readyCount === 4 ? 'text-white' : 'text-yellow-400'}`}>
+                    {readyCount} / 4 已就緒
+                  </span>
+                  <p className="text-[10px] text-gray-500 mt-2 font-medium">
+                    {readyCount === 4 ? '所有核心依賴配置正常' : `缺: ${missing.join(', ')}`}
+                  </p>
+                </>
+              );
+            })()}
           </div>
         </div>
 
-        {/* Card 2: Memory */}
+        {/* Card 2: 埠口衝突檢測 */}
         <div className="bg-darkCard border border-darkBorder rounded-xl p-4 flex flex-col justify-between shadow-sm">
           <div className="flex items-center justify-between text-gray-400">
-            <span className="text-xs font-semibold uppercase tracking-wider">記憶體 (RAM)</span>
-            <Layers size={16} className="text-indigo-400" />
+            <span className="text-xs font-semibold uppercase tracking-wider">埠口衝突檢測</span>
+            <AlertTriangle size={16} className={Object.values(portConflicts).some(Boolean) ? 'text-red-400 animate-pulse' : 'text-green-400'} />
           </div>
           <div className="mt-2.5">
-            <span className="text-2xl font-black text-white tracking-tight">{systemResources.memory} MB</span>
-            <div className="w-full h-1 bg-darkInput rounded-full overflow-hidden mt-2">
-              <div
-                style={{ width: `${Math.min(systemResources.memory / 2, 100)}%` }}
-                className="h-full bg-indigo-500 rounded-full transition-all duration-500"
-              />
-            </div>
+            {(() => {
+              const conflicts = Object.keys(portConflicts).filter(port => portConflicts[port]);
+              const hasConflict = conflicts.length > 0;
+              return (
+                <>
+                  <span className={`text-2xl font-black tracking-tight ${hasConflict ? 'text-red-400' : 'text-green-400'}`}>
+                    {hasConflict ? `${conflicts.length} 個衝突` : '無埠口衝突'}
+                  </span>
+                  <p className="text-[10px] text-gray-500 mt-2 font-medium truncate">
+                    {hasConflict ? `Port: ${conflicts.join(', ')} 被佔用` : '本機埠口使用正常'}
+                  </p>
+                </>
+              );
+            })()}
           </div>
         </div>
 
-        {/* Card 3: Running Services */}
+        {/* Card 3: Hosts 本地網域 */}
         <div className="bg-darkCard border border-darkBorder rounded-xl p-4 flex flex-col justify-between shadow-sm">
           <div className="flex items-center justify-between text-gray-400">
-            <span className="text-xs font-semibold uppercase tracking-wider">運行中服務</span>
-            <Server size={16} className="text-green-400" />
+            <span className="text-xs font-semibold uppercase tracking-wider">Hosts 本地網域</span>
+            <Layers size={16} className="text-teal-400" />
           </div>
           <div className="mt-2.5">
-            <span className="text-2xl font-black text-white tracking-tight">{getRunningServicesCount()} / {(3 + (scanResult?.PHPList?.length || 0))}</span>
-            <p className="text-[10px] text-gray-500 mt-2 font-medium">包含 PHP FastCGI 多版本</p>
+            {(() => {
+              let domainCount = 0;
+              config?.projects?.forEach((p: any) => {
+                if (p.enabled && p.domains) {
+                  domainCount += p.domains.length;
+                }
+              });
+              const autoUpdate = config?.global?.auto_update_hosts;
+              return (
+                <>
+                  <span className="text-2xl font-black text-white tracking-tight">{domainCount} 個網域</span>
+                  <p className="text-[10px] text-gray-500 mt-2 font-medium">
+                    Hosts 自動同步: {autoUpdate ? '開啟' : '關閉'}
+                  </p>
+                </>
+              );
+            })()}
           </div>
         </div>
 
-        {/* Card 4: Projects */}
+        {/* Card 4: 託管專案概覽 */}
         <div className="bg-darkCard border border-darkBorder rounded-xl p-4 flex flex-col justify-between shadow-sm">
           <div className="flex items-center justify-between text-gray-400">
-            <span className="text-xs font-semibold uppercase tracking-wider">託管專案數</span>
-            <Folder size={16} className="text-teal-400" />
+            <span className="text-xs font-semibold uppercase tracking-wider">託管專案概覽</span>
+            <Folder size={16} className="text-indigo-400" />
           </div>
           <div className="mt-2.5">
-            <span className="text-2xl font-black text-white tracking-tight">{config?.projects?.length || 0}</span>
-            <p className="text-[10px] text-gray-500 mt-2 font-medium">已啟用: {config?.projects?.filter((p: any) => p.enabled).length || 0} 個站點</p>
+            {(() => {
+              const total = config?.projects?.length || 0;
+              const enabled = config?.projects?.filter((p: any) => p.enabled).length || 0;
+              const rate = total > 0 ? Math.round((enabled / total) * 100) : 0;
+              return (
+                <>
+                  <span className="text-2xl font-black text-white tracking-tight">{enabled} / {total} 啟用</span>
+                  <p className="text-[10px] text-gray-500 mt-2 font-medium">
+                    專案啟用率: {rate}%
+                  </p>
+                </>
+              );
+            })()}
           </div>
         </div>
       </div>

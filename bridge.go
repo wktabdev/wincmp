@@ -37,6 +37,50 @@ func (a *App) GetDetailedResources() (resource.DetailedResources, error) {
 	return a.resMonitor.GetDetailedResourceUsage()
 }
 
+// CheckPortConflicts 檢查核心服務端口是否被佔用
+func (a *App) CheckPortConflicts() (map[string]bool, error) {
+	ports := []int{80, 443}
+
+	// MariaDB Port
+	dbPort := a.appCfg.Global.MariaDBPort
+	if dbPort <= 0 {
+		dbPort = 3306
+	}
+	ports = append(ports, dbPort)
+
+	// Mailpit Ports
+	smtpPort := a.appCfg.Global.MailpitSMTPPort
+	if smtpPort <= 0 {
+		smtpPort = 1025
+	}
+	httpPort := a.appCfg.Global.MailpitHTTPPort
+	if httpPort <= 0 {
+		httpPort = 8025
+	}
+	ports = append(ports, smtpPort, httpPort)
+
+	conflicts := make(map[string]bool)
+	for _, p := range ports {
+		isRunning := false
+		if p == 80 || p == 443 {
+			isRunning = a.procMgr.IsRunning("caddy")
+		} else if p == dbPort {
+			isRunning = a.IsMariaDBRunning()
+		} else if p == smtpPort || p == httpPort {
+			isRunning = a.procMgr.IsRunning("mailpit")
+		}
+
+		// 只有當服務未運行且端口不可用時，才視為衝突
+		if !isRunning && !process.IsPortAvailable(p) {
+			conflicts[strconv.Itoa(p)] = true
+		} else {
+			conflicts[strconv.Itoa(p)] = false
+		}
+	}
+
+	return conflicts, nil
+}
+
 // GetConfig 獲取當前記憶體中的全域設定檔
 func (a *App) GetConfig() *config.WincmpConfig {
 	return a.appCfg
