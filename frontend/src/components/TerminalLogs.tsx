@@ -30,13 +30,37 @@ export default function TerminalLogs() {
   const logEndRef = useRef<HTMLDivElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
 
+  // 用於追蹤當前啟動的分頁，以避免在 handleIncomingLog 中閉包抓到舊值
+  const activeTabRef = useRef(activeTab);
+  // 用於防抖動 (debounce) 自動切換分頁的定時器
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // 當 activeTab 改變時，更新 Ref 並清除任何懸而未決的自動切換定時器
+  useEffect(() => {
+    activeTabRef.current = activeTab;
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+      debounceTimerRef.current = null;
+    }
+  }, [activeTab]);
+
+  // 元件卸載時清理定時器
+  useEffect(() => {
+    return () => {
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+      }
+    };
+  }, []);
+
   // 訂閱 Go 端的日誌 Event
   useEffect(() => {
     const handleIncomingLog = (data: any) => {
       if (!data || !data.category) return;
       const category = data.category === 'node' ? 'runtime' : data.category;
       
-      if (logs[category] !== undefined) {
+      const isValidCategory = category === 'system' || category === 'caddy' || category === 'mariadb' || category === 'mailpit' || category === 'php' || category === 'runtime';
+      if (isValidCategory) {
         setLogs(prev => {
           const currentLogs = prev[category] || [];
           // 限制單個分頁最大日誌行數為 1000 行
@@ -49,6 +73,18 @@ export default function TerminalLogs() {
             [category]: newLogs
           };
         });
+
+        // 根據最新有 log 的分頁自動切換 (防抖動 500ms，做法參考舊 Fyne 的 terminal log 處理)
+        if (category !== activeTabRef.current) {
+          if (debounceTimerRef.current) {
+            clearTimeout(debounceTimerRef.current);
+          }
+          debounceTimerRef.current = setTimeout(() => {
+            if (category !== activeTabRef.current) {
+              setActiveTab(category);
+            }
+          }, 500);
+        }
       }
     };
 
@@ -57,7 +93,7 @@ export default function TerminalLogs() {
     return () => {
       EventsOff('log');
     };
-  }, [logs]);
+  }, []);
 
   // 自動滾動到底部
   useEffect(() => {
