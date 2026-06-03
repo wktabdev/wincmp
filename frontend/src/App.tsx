@@ -224,7 +224,7 @@ export default function App() {
 
         {/* 下半部：即時日誌區 */}
         {showLogs && (
-          <div className="h-[35%] min-h-[150px] border-t border-darkBorder p-4 bg-darkBg overflow-hidden">
+          <div className="h-[35%] min-h-[150px] border-t border-darkBorder bg-darkBg overflow-hidden">
             <TerminalLogs />
           </div>
         )}

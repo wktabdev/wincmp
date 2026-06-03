@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Terminal, Trash2, ArrowDown } from 'lucide-react';
+import { Trash2, ArrowDown } from 'lucide-react';
 import { EventsOn, EventsOff } from '../../wailsjs/runtime/runtime';
 
 interface LogLine {
@@ -124,14 +124,26 @@ export default function TerminalLogs() {
   };
 
   return (
-    <div className="flex flex-col h-full bg-[#08080a] border border-darkBorder rounded-xl overflow-hidden shadow-lg select-none">
-      {/* 標頭列 */}
-      <div className="flex justify-between items-center px-5 py-2.5 border-b border-darkBorder bg-[#0c0c0f] select-none">
-        <div className="flex items-center gap-2 font-bold text-xs text-gray-300">
-          <Terminal size={14} className="text-blue-500" />
-          <span>即時日誌視窗 (Terminal Output)</span>
+    <div className="flex flex-col h-full bg-[#08080a] overflow-hidden select-none">
+      {/* 分頁 Tab 與控制項 */}
+      <div className="flex justify-between items-center border-b border-darkBorder bg-[#0b0b0e] px-3 select-none">
+        <div className="flex overflow-x-auto scrollbar-none">
+          {CATEGORIES.map(tab => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`px-4 py-2.5 text-[11px] font-bold border-b-2 transition duration-200 shrink-0 ${
+                activeTab === tab.id
+                  ? 'border-blue-500 text-blue-400 bg-white/[0.02]'
+                  : 'border-transparent text-gray-400 hover:text-gray-200'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
         </div>
-        <div className="flex gap-2">
+
+        <div className="flex gap-2 py-1.5 shrink-0">
           {!autoScroll && (
             <button
               onClick={() => {
@@ -150,23 +162,6 @@ export default function TerminalLogs() {
             <Trash2 size={11} /> 清空日誌
           </button>
         </div>
-      </div>
-
-      {/* 分頁 Tab */}
-      <div className="flex border-b border-darkBorder bg-[#0b0b0e] px-3 select-none">
-        {CATEGORIES.map(tab => (
-          <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
-            className={`px-4 py-2.5 text-[11px] font-bold border-b-2 transition duration-200 ${
-              activeTab === tab.id
-                ? 'border-blue-500 text-blue-400 bg-white/[0.02]'
-                : 'border-transparent text-gray-400 hover:text-gray-200'
-            }`}
-          >
-            {tab.label}
-          </button>
-        ))}
       </div>
 
       {/* 日誌內容展示區 */}
