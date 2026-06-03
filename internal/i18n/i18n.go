@@ -442,6 +442,7 @@ var enTranslations = map[string]string{
 	"運行中 (%d 個 PID)": "Running (%d PIDs)",
 	"依賴下載器": "Dependency Downloader",
 	"正在準備下載環境...": "Preparing download environment...",
+	"準備下載...": "Preparing to download...",
 	"背景執行": "Background",
 	"返回": "Back",
 	"正在下載 %s...\n%.2fMB / %.2fMB": "Downloading %s...\n%.2fMB / %.2fMB",
