@@ -13,7 +13,7 @@ import (
 var DefaultConfFS embed.FS
 
 // RestoreDefaultConf 遞迴將 embedded 內的 default_conf 釋放到 baseDir/conf 中。
-// 採用安全機制：若檔案已存在則不覆蓋，保留哥哥已自訂的設定。
+// 採用安全機制：若檔案已存在則不覆蓋，保留已自訂的設定。
 func RestoreDefaultConf(baseDir string) error {
 	// embed.FS 會保留前綴 "default_conf"，使用 Sub 取得無前綴的子檔案系統
 	subFS, err := fs.Sub(DefaultConfFS, "default_conf")
@@ -43,7 +43,7 @@ func RestoreDefaultConf(baseDir string) error {
 			return nil
 		}
 
-		// 🌟 安全機制：若檔案已存在，則跳過，避免覆蓋哥哥的自訂設定
+		// 🌟 安全機制：若檔案已存在，則跳過，避免覆蓋自訂設定
 		if _, err := os.Stat(targetPath); err == nil {
 			return nil
 		}

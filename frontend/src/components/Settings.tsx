@@ -357,7 +357,7 @@ export default function Settings() {
           <h3 className="font-bold text-sm text-gray-200 flex items-center gap-2 border-b border-darkBorder/40 pb-3 select-none">
             <FileText size={14} className="text-orange-400" /> 系統設定檔案快速捷徑
           </h3>
-          <p className="text-[11px] text-gray-500 select-none font-medium">哥哥可以在這裡直接使用系統預設編輯器開啟核心設定檔，進行進階手動編輯：</p>
+          <p className="text-[11px] text-gray-500 select-none font-medium">可以在這裡直接使用系統預設編輯器開啟核心設定檔，進行進階手動編輯：</p>
           <div className="grid grid-cols-3 gap-3 select-none">
             <button
               onClick={() => handleOpenLocalPath('hosts')}
