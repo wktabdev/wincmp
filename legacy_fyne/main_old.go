@@ -1,14 +1,63 @@
 package main
 
 import (
-	"embed"
+	"context"
+	"database/sql"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"net/http"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"regexp"
+	"sort"
+	"strconv"
+	"strings"
+	"syscall"
+	"time"
 
-	"github.com/wailsapp/wails/v2"
-	"github.com/wailsapp/wails/v2/pkg/options"
-	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
+	"golang.org/x/sys/windows"
+
+	"image/color"
+
+	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/app"
+	"fyne.io/fyne/v2/canvas"
+	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/dialog"
+	"fyne.io/fyne/v2/driver/desktop"
+	"fyne.io/fyne/v2/layout"
+	"fyne.io/fyne/v2/theme"
+	"fyne.io/fyne/v2/widget"
+	"fyne.io/systray"
+
+	"wincmp/internal/config"
+	"wincmp/internal/detect"
+	"wincmp/internal/downloader"
+	"wincmp/internal/hosts"
+	"wincmp/internal/i18n"
+	"wincmp/internal/port"
+	"wincmp/internal/preset"
+	"wincmp/internal/process"
+	"wincmp/internal/resource"
+	"wincmp/internal/scanner"
+	"wincmp/internal/singleinstance"
+
+	"fyne.io/fyne/v2/data/binding"
+
+	"sync"
+	"sync/atomic"
+
+	"github.com/BurntSushi/toml"
+	fynetooltip "github.com/dweymouth/fyne-tooltip"
+	ttwidget "github.com/dweymouth/fyne-tooltip/widget"
+	_ "github.com/go-sql-driver/mysql"
+	mysql "github.com/go-sql-driver/mysql"
+	"github.com/ncruces/zenity"
+	"gopkg.in/natefinch/lumberjack.v2"
 )
 
-<<<<<<< HEAD
 // 全域變數
 
 // tabSwitchReq 分頁切換請求
@@ -102,7 +151,7 @@ func getTruncatedMsg() string {
 	if appCfg != nil && appCfg.Global.MaxLogLines > 0 {
 		lines = appCfg.Global.MaxLogLines
 	}
-	return i18n.Tfmt("| 日誌已截斷，僅保留最後 %d 行 / 200KB |\n", lines)
+	return fmt.Sprintf("| 日誌已截斷，僅保留最後 %d 行 / 200KB |\n", lines)
 }
 
 // dynamicTooltipLabel 是一個自製的動態 Tooltip 標籤，支援在顯示期間即時刷新內容
@@ -928,7 +977,7 @@ func main() {
 				RestoreLastState: bool(true), // 用於相容性
 				MinimizeToTray:   false,
 				AutoUpdateHosts:  true,
-				DependencyURL:    config.DefaultDependencyURL,
+				DependencyURL:    "https://raw.githubusercontent.com/wktabdev/wincmp/main/conf/dependencies.json",
 			},
 		}
 	}
@@ -1784,7 +1833,7 @@ func validatePHPMajorVersion(majorVersion string) string {
 func sanitizePath(path string) (string, error) {
 	cleaned := filepath.Clean(path)
 	if strings.Contains(cleaned, "..") {
-		return "", fmt.Errorf("%s", i18n.Tfmt("路徑含非法的目錄遍歷: %s", path))
+		return "", fmt.Errorf("路徑含非法的目錄遍歷: %s", path)
 	}
 	return cleaned, nil
 }
@@ -1793,7 +1842,7 @@ func sanitizePath(path string) (string, error) {
 func validateCaddyPath(path string) (string, error) {
 	cleaned := filepath.Clean(path)
 	if strings.Contains(cleaned, "..") {
-		return "", fmt.Errorf("%s", i18n.Tfmt("路徑含非法的目錄遍歷: %s", path))
+		return "", fmt.Errorf("路徑含非法的目錄遍歷: %s", path)
 	}
 	// 轉換為正斜線（Caddy 設定檔格式）
 	return strings.ReplaceAll(cleaned, "\\", "/"), nil
@@ -1925,7 +1974,7 @@ func generateCaddyfiles() error {
 		content += "}\n"
 
 		if err := os.WriteFile(caddyPath, []byte(content), 0600); err != nil {
-			return fmt.Errorf(i18n.T("寫入 Caddy 設定檔 %s 失敗: %w"), caddyPath, err)
+			return fmt.Errorf("寫入 Caddy 設定檔 %s 失敗: %w", caddyPath, err)
 		}
 	}
 	return nil
@@ -2049,12 +2098,6 @@ func checkPHPForProjects(win fyne.Window) {
 				return
 			}
 			for _, phpInfo := range toStart {
-				// 確保套用最新的進程數配置
-				if count, ok := appCfg.Global.PHP.Processes[phpInfo.MajorMin]; ok {
-					phpInfo.PortCount = count
-				} else {
-					phpInfo.PortCount = appCfg.Global.PHP.ProcessesPerVersion
-				}
 				if err := procMgr.StartPHPCGI(*phpInfo); err != nil {
 					addErrorLog("php", i18n.Tfmt("啟動 PHP %s 失敗", phpInfo.Version), err)
 				} else {
@@ -2072,33 +2115,33 @@ func checkCoreDependencies(win fyne.Window) {
 	missingPHP := len(scanRes.PHPList) == 0
 	missingMariaDB := len(scanRes.MariaDBList) == 0
 
-	// 若已安裝 Caddy 且已安裝 PHP（不論 MariaDB 是否缺失），則直接返回，不進行提示
-	if !missingCaddy && !missingPHP {
+	// 若無缺失任何核心元件則直接返回
+	if !missingCaddy && !missingPHP && !missingMariaDB {
 		return
 	}
 
 	var msgBuilder strings.Builder
-	msgBuilder.WriteString(i18n.T("WinCMP 偵測到您尚未設定所需的關鍵核心依賴：\n\n"))
+	msgBuilder.WriteString("WinCMP detected that you have not configured the required core dependencies:\n\n")
 
 	if missingCaddy {
-		msgBuilder.WriteString(i18n.T("  [缺失] Caddy   (找不到執行檔)\n"))
+		msgBuilder.WriteString("  [Missing] Caddy   (Executable not found)\n")
 	} else {
-		msgBuilder.WriteString(i18n.T("  [已偵測] Caddy   (已偵測)\n"))
+		msgBuilder.WriteString("  [Detected] Caddy   (Detected)\n")
 	}
 
 	if missingPHP {
-		msgBuilder.WriteString(i18n.T("  [缺失] PHP     (找不到執行檔)\n"))
+		msgBuilder.WriteString("  [Missing] PHP     (Executable not found)\n")
 	} else {
-		msgBuilder.WriteString(i18n.T("  [已偵測] PHP     (已偵測)\n"))
+		msgBuilder.WriteString("  [Detected] PHP     (Detected)\n")
 	}
 
 	if missingMariaDB {
-		msgBuilder.WriteString(i18n.T("  [缺失] MariaDB (找不到執行檔)\n"))
+		msgBuilder.WriteString("  [Missing] MariaDB (Executable not found)\n")
 	} else {
-		msgBuilder.WriteString(i18n.T("  [已偵測] MariaDB (已偵測)\n"))
+		msgBuilder.WriteString("  [Detected] MariaDB (Detected)\n")
 	}
 
-	msgBuilder.WriteString(i18n.T("\n您是否要立即開始自動下載與設定？"))
+	msgBuilder.WriteString("\nWould you like to start the automatic download and configuration now?")
 
 	lbl := widget.NewLabel(msgBuilder.String())
 	lbl.Wrapping = fyne.TextWrapWord
@@ -2107,18 +2150,11 @@ func checkCoreDependencies(win fyne.Window) {
 	dialogContent.SetMinSize(fyne.NewSize(450, 200))
 
 	fyne.Do(func() {
-		dialog.NewCustomConfirm(
-			i18n.T("核心依賴缺失"),
-			i18n.T("自動下載 (推薦)"),
-			i18n.T("稍後設定"),
-			dialogContent,
-			func(confirm bool) {
-				if confirm {
-					fetchDependenciesForAutoDownload(win, missingCaddy, missingPHP, missingMariaDB)
-				}
-			},
-			win,
-		).Show()
+		dialog.NewCustomConfirm("Dependency Missing", "Auto Download (Recommended)", "Configure Later", dialogContent, func(confirm bool) {
+			if confirm {
+				fetchDependenciesForAutoDownload(win, missingCaddy, missingPHP, missingMariaDB)
+			}
+		}, win).Show()
 	})
 }
 
@@ -2128,7 +2164,7 @@ func fetchDependenciesForAutoDownload(win fyne.Window, missingCaddy, missingPHP,
 	progress.Show()
 
 	go func() {
-		url := config.DefaultDependencyURL
+		url := "https://raw.githubusercontent.com/wktabdev/wincmp/main/conf/dependencies.json"
 		if appCfg != nil && appCfg.Global.DependencyURL != "" {
 			url = appCfg.Global.DependencyURL
 		}
@@ -2305,11 +2341,11 @@ func runActualAutoDownload(win fyne.Window, missingCaddy, missingMariaDB bool, p
 	}
 
 	// 建立下載進度 UI
-	titleLabel := widget.NewLabel(i18n.T("依賴下載器"))
+	titleLabel := widget.NewLabel("Dependency Downloader")
 	titleLabel.TextStyle = fyne.TextStyle{Bold: true}
 	titleLabel.Alignment = fyne.TextAlignCenter
 
-	statusLabel := widget.NewLabel(i18n.T("正在準備下載環境..."))
+	statusLabel := widget.NewLabel("Preparing download environment...")
 	statusLabel.Alignment = fyne.TextAlignCenter
 	progressBar := widget.NewProgressBar()
 	progressBar.SetValue(0)
@@ -2317,11 +2353,11 @@ func runActualAutoDownload(win fyne.Window, missingCaddy, missingMariaDB bool, p
 	var d *widget.PopUp
 
 	// 自訂按鈕元件
-	bgBtn := widget.NewButton(i18n.T("背景執行"), func() {
+	bgBtn := widget.NewButton("Background", func() {
 		d.Hide()
 	})
 
-	closeBtn := widget.NewButton(i18n.T("關閉"), func() {
+	closeBtn := widget.NewButton("Close", func() {
 		d.Hide()
 	})
 	closeBtn.Hide() // 初始隱藏
@@ -2348,8 +2384,8 @@ func runActualAutoDownload(win fyne.Window, missingCaddy, missingMariaDB bool, p
 	go func() {
 		hasError := false
 		for i, spec := range specs {
-			prefix := i18n.Tfmt("[%d/%d] 正在下載 %s...", i+1, len(specs), spec.name)
-			addLog("system", i18n.Tfmt("正在下載核心依賴: %s...", spec.name))
+			prefix := fmt.Sprintf("[%d/%d] Downloading %s...", i+1, len(specs), spec.name)
+			addLog("system", fmt.Sprintf("Downloading core dependency: %s...", spec.name))
 
 			// 執行檔案下載
 			err := downloader.DownloadFile(spec.url, spec.destZip, func(current, total int64) {
@@ -2369,32 +2405,32 @@ func runActualAutoDownload(win fyne.Window, missingCaddy, missingMariaDB bool, p
 			if err != nil {
 				hasError = true
 				fyne.Do(func() {
-					statusLabel.SetText(i18n.Tfmt("下載 %s 失敗:\n%v", spec.name, err))
+					statusLabel.SetText(fmt.Sprintf("Download failed for %s:\n%v", spec.name, err))
 					bgBtn.Hide()
 					closeBtn.Show()
 					buttonBox.Refresh()
 				})
-				addErrorLog("system", i18n.Tfmt("下載 %s 失敗", spec.name), err)
+				addErrorLog("system", fmt.Sprintf("Download failed for %s", spec.name), err)
 				break
 			}
 
 			// 執行解壓縮
 			fyne.Do(func() {
-				statusLabel.SetText(i18n.Tfmt("[%d/%d] 正在解壓縮 %s...", i+1, len(specs), spec.name))
+				statusLabel.SetText(fmt.Sprintf("[%d/%d] Extracting %s...", i+1, len(specs), spec.name))
 				progressBar.SetValue(0.5)
 			})
-			addLog("system", i18n.Tfmt("正在解壓縮核心依賴: %s...", spec.name))
+			addLog("system", fmt.Sprintf("Extracting core dependency: %s...", spec.name))
 
 			err = downloader.Unzip(spec.destZip, spec.destDir)
 			if err != nil {
 				hasError = true
 				fyne.Do(func() {
-					statusLabel.SetText(i18n.Tfmt("解壓縮 %s 失敗:\n%v", spec.name, err))
+					statusLabel.SetText(fmt.Sprintf("Extraction failed for %s:\n%v", spec.name, err))
 					bgBtn.Hide()
 					closeBtn.Show()
 					buttonBox.Refresh()
 				})
-				addErrorLog("system", i18n.Tfmt("解壓縮 %s 失敗", spec.name), err)
+				addErrorLog("system", fmt.Sprintf("Extraction failed for %s", spec.name), err)
 				break
 			}
 
@@ -2411,16 +2447,16 @@ func runActualAutoDownload(win fyne.Window, missingCaddy, missingMariaDB bool, p
 					// 刪除已存在的 newDir 以防 rename 失敗，保證全新覆蓋
 					os.RemoveAll(newDir)
 					if renameErr := os.Rename(oldDir, newDir); renameErr != nil {
-						addErrorLog("system", i18n.T("MariaDB 目錄重新命名失敗"), renameErr)
+						addErrorLog("system", "MariaDB directory rename failed", renameErr)
 					}
 				}
 			}
-			addLog("system", i18n.Tfmt("已安裝核心依賴: %s", spec.name))
+			addLog("system", fmt.Sprintf("Installed core dependency: %s", spec.name))
 		}
 
 		if !hasError {
 			fyne.Do(func() {
-				statusLabel.SetText(i18n.T("所有遺失的依賴都已下載並設定完成！"))
+				statusLabel.SetText("All missing dependencies have been downloaded and configured!")
 				progressBar.SetValue(1.0)
 				bgBtn.Hide()
 				closeBtn.Show()
@@ -2430,9 +2466,9 @@ func runActualAutoDownload(win fyne.Window, missingCaddy, missingMariaDB bool, p
 				var scanErr error
 				scanRes, scanErr = scanner.ScanBinDir(baseDir)
 				if scanErr != nil {
-					addErrorLog("system", i18n.T("重新掃描失敗"), scanErr)
+					addErrorLog("system", "Rescan failed", scanErr)
 				} else {
-					addLog("system", i18n.T("重新掃描完成，正在重新載入儀表板..."))
+					addLog("system", "Rescan completed, reloading dashboard...")
 					newDashboard := createDashboard(win, func() {})
 					mainTabs.Items[0].Content = newDashboard
 					mainTabs.Refresh()
@@ -2584,18 +2620,18 @@ func createDependencyRow(win fyne.Window, d *dialog.Dialog, name string, localVe
 	}
 
 	if localVer == "" {
-		infoLabel.SetText(i18n.Tfmt("未安裝 (建議: %s)", recVer))
-		btn = widget.NewButton(i18n.T("下載"), actionFn)
+		infoLabel.SetText(fmt.Sprintf("Not Installed (Recommended: %s)", recVer))
+		btn = widget.NewButton("Download", actionFn)
 		btnWrapper = container.NewThemeOverride(btn, &depButtonTheme{action: "Download"})
 	} else {
 		cmp := compareVersions(localVer, recVer)
 		if cmp < 0 {
-			infoLabel.SetText(i18n.Tfmt("已安裝: %s (有新版本 %s 可供更新)", localVer, recVer))
-			btn = widget.NewButton(i18n.T("更新"), actionFn)
+			infoLabel.SetText(fmt.Sprintf("Installed: %s (Update available to %s)", localVer, recVer))
+			btn = widget.NewButton("Update", actionFn)
 			btnWrapper = container.NewThemeOverride(btn, &depButtonTheme{action: "Update"})
 		} else {
-			infoLabel.SetText(i18n.Tfmt("已安裝: %s (已是最新版本)", localVer))
-			btn = widget.NewButton(i18n.T("重新安裝"), actionFn)
+			infoLabel.SetText(fmt.Sprintf("Installed: %s (Up to date)", localVer))
+			btn = widget.NewButton("Reinstall", actionFn)
 			btnWrapper = container.NewThemeOverride(btn, &depButtonTheme{action: "Reinstall"})
 		}
 	}
@@ -2719,9 +2755,9 @@ func showDependencyManager(win fyne.Window) {
 		widget.NewSeparator(),
 		createDependencyRow(win, &dependencyManagerDialog, "MariaDB Database", getLocalMariaDBVersion(), mariaDBVer, mariaDBSpec),
 	)
-	coreCard := widget.NewCard(i18n.T("核心依賴"), i18n.T("Web 伺服器與資料庫"), coreRows)
+	coreCard := widget.NewCard("Core Dependencies", "Web server and database", coreRows)
 
-	phpCard := widget.NewCard(i18n.T("PHP 執行環境"), i18n.T("下載與管理 PHP 版本"), container.NewVBox(phpRows...))
+	phpCard := widget.NewCard("PHP Runtimes", "Download and manage PHP versions", container.NewVBox(phpRows...))
 
 	otherRows := container.NewVBox(
 		createDependencyRow(win, &dependencyManagerDialog, "Composer", getLocalComposerVersion(), composerVer, composerSpec),
@@ -2732,7 +2768,7 @@ func showDependencyManager(win fyne.Window) {
 		widget.NewSeparator(),
 		createDependencyRow(win, &dependencyManagerDialog, "Mailpit", getLocalMailpitVersion(), mailpitVer, mailpitSpec),
 	)
-	otherCard := widget.NewCard(i18n.T("其他依賴"), i18n.T("套件管理器、GUI 工具與執行環境系統"), otherRows)
+	otherCard := widget.NewCard("Other Dependencies", "Package managers, GUI tools and runtime systems", otherRows)
 
 	scrollContent := container.NewVScroll(container.NewVBox(
 		coreCard,
@@ -2743,14 +2779,14 @@ func showDependencyManager(win fyne.Window) {
 
 	topBar := container.NewHBox(
 		layout.NewSpacer(),
-		widget.NewButtonWithIcon(i18n.T("獲取"), theme.ViewRefreshIcon(), func() {
+		widget.NewButtonWithIcon("Fetch", theme.ViewRefreshIcon(), func() {
 			manualFetchDependencies(win)
 		}),
 	)
 
 	dialogContent := container.NewBorder(topBar, nil, nil, nil, scrollContent)
 
-	dependencyManagerDialog = dialog.NewCustom(i18n.T("依賴管理器"), i18n.T("關閉"), dialogContent, win)
+	dependencyManagerDialog = dialog.NewCustom("Dependency Manager", "Close", dialogContent, win)
 	dependencyManagerDialog.SetOnClosed(func() {
 		dependencyManagerDialog = nil
 	})
@@ -2763,7 +2799,7 @@ func manualFetchDependencies(win fyne.Window) {
 	progress.Show()
 
 	go func() {
-		url := config.DefaultDependencyURL
+		url := "https://raw.githubusercontent.com/wktabdev/wincmp/main/conf/dependencies.json"
 		if appCfg != nil && appCfg.Global.DependencyURL != "" {
 			url = appCfg.Global.DependencyURL
 		}
@@ -2816,7 +2852,7 @@ func manualFetchDependencies(win fyne.Window) {
 							addErrorLog("system", i18n.T("手動獲取時，無法儲存下載的依賴建議版本"), err)
 						}
 					} else {
-						fetchErr = fmt.Errorf("%s", i18n.T("依賴設定檔格式不正確，缺少必要欄位"))
+						fetchErr = fmt.Errorf("依賴設定檔格式不正確，缺少必要欄位")
 						addLog("system", i18n.T("⚠️ 手動獲取的依賴設定檔格式不正確，缺少必要欄位"))
 					}
 				} else {
@@ -2824,7 +2860,7 @@ func manualFetchDependencies(win fyne.Window) {
 					addErrorLog("system", i18n.T("無法解析下載的依賴設定檔"), err)
 				}
 			} else {
-				fetchErr = fmt.Errorf("%s", i18n.Tfmt("伺服器回應錯誤狀態碼: %d", resp.StatusCode))
+				fetchErr = fmt.Errorf("伺服器回應錯誤狀態碼: %d", resp.StatusCode)
 				addLog("system", i18n.Tfmt("⚠️ 手動獲取依賴建議版本伺服器回應錯誤狀態碼: %d", resp.StatusCode))
 			}
 		} else {
@@ -2848,18 +2884,18 @@ func manualFetchDependencies(win fyne.Window) {
 				infoDlg.Show()
 			} else {
 				// 自訂錯誤對話框，避免 Fyne 框架自動偵測系統 Locale 導致的簡體字標題「错误」與按鈕「好」
-				errMsg := i18n.T("無法獲取最新依賴資訊，請檢查網路連線或稍後再試。")
+				errMsg := "無法獲取最新依賴資訊，請檢查網路連線或稍後再試。"
 				if fetchErr != nil {
-					errMsg = i18n.Tfmt("無法獲取最新依賴資訊：\n%v\n\n請檢查網路連線或稍後再試。", fetchErr)
+					errMsg = fmt.Sprintf("無法獲取最新依賴資訊：\n%v\n\n請檢查網路連線或稍後再試。", fetchErr)
 				}
 				errLabel := widget.NewLabel(errMsg)
 				errLabel.Wrapping = fyne.TextWrapWord
-
+				
 				// 限制最大寬度與高度以防錯誤訊息太長拉寬視窗
 				scroll := container.NewVScroll(errLabel)
 				scroll.SetMinSize(fyne.NewSize(380, 100))
-
-				errDialog := dialog.NewCustom(i18n.T("錯誤"), i18n.T("確定"), scroll, win)
+				
+				errDialog := dialog.NewCustom("錯誤", "確定", scroll, win)
 				errDialog.Show()
 			}
 		})
@@ -2869,7 +2905,7 @@ func manualFetchDependencies(win fyne.Window) {
 // fetchLatestDependenciesInBackground 在背景取得最新建議依賴版本並更新本地 dependencies.json，完成後若視窗仍開啟則自動刷新
 func fetchLatestDependenciesInBackground(win fyne.Window) {
 	go func() {
-		url := config.DefaultDependencyURL
+		url := "https://raw.githubusercontent.com/wktabdev/wincmp/main/conf/dependencies.json"
 		if appCfg != nil && appCfg.Global.DependencyURL != "" {
 			url = appCfg.Global.DependencyURL
 		}
@@ -2946,11 +2982,11 @@ func fetchLatestDependenciesInBackground(win fyne.Window) {
 }
 
 func startSingleDependencyDownload(win fyne.Window, spec depSpec) {
-	titleLabel := widget.NewLabel(i18n.T("依賴下載器"))
+	titleLabel := widget.NewLabel("Dependency Downloader")
 	titleLabel.TextStyle = fyne.TextStyle{Bold: true}
 	titleLabel.Alignment = fyne.TextAlignCenter
 
-	statusLabel := widget.NewLabel(i18n.T("準備下載..."))
+	statusLabel := widget.NewLabel("Preparing to download...")
 	statusLabel.Alignment = fyne.TextAlignCenter
 	progressBar := widget.NewProgressBar()
 	progressBar.SetValue(0)
@@ -2958,17 +2994,17 @@ func startSingleDependencyDownload(win fyne.Window, spec depSpec) {
 	var d *widget.PopUp
 
 	// 自訂按鈕元件
-	bgBtn := widget.NewButton(i18n.T("背景執行"), func() {
+	bgBtn := widget.NewButton("Background", func() {
 		d.Hide()
 	})
 
-	backBtn := widget.NewButton(i18n.T("返回"), func() {
+	backBtn := widget.NewButton("Back", func() {
 		d.Hide()
 		showDependencyManager(win)
 	})
 	backBtn.Hide() // 初始隱藏
 
-	closeBtn := widget.NewButton(i18n.T("關閉"), func() {
+	closeBtn := widget.NewButton("Close", func() {
 		d.Hide()
 	})
 	closeBtn.Hide() // 初始隱藏
@@ -2994,7 +3030,7 @@ func startSingleDependencyDownload(win fyne.Window, spec depSpec) {
 
 	go func() {
 		hasError := false
-		addLog("system", i18n.Tfmt("開始下載: %s...", spec.name))
+		addLog("system", fmt.Sprintf("Starting download for: %s...", spec.name))
 
 		err := downloader.DownloadFile(spec.url, spec.destZip, func(current, total int64) {
 			var percent float64
@@ -3005,7 +3041,7 @@ func startSingleDependencyDownload(win fyne.Window, spec depSpec) {
 			totalMB := float64(total) / 1024 / 1024
 
 			fyne.Do(func() {
-				statusLabel.SetText(i18n.Tfmt("正在下載 %s...\n%.2fMB / %.2fMB", spec.name, currentMB, totalMB))
+				statusLabel.SetText(fmt.Sprintf("Downloading %s...\n%.2fMB / %.2fMB", spec.name, currentMB, totalMB))
 				progressBar.SetValue(percent)
 			})
 		})
@@ -3013,35 +3049,35 @@ func startSingleDependencyDownload(win fyne.Window, spec depSpec) {
 		if err != nil {
 			hasError = true
 			fyne.Do(func() {
-				statusLabel.SetText(i18n.Tfmt("下載 %s 失敗:\n%v", spec.name, err))
+				statusLabel.SetText(fmt.Sprintf("Download failed for %s:\n%v", spec.name, err))
 				bgBtn.Hide()
 				backBtn.Show()
 				closeBtn.Show()
 				buttonBox.Refresh()
 			})
-			addErrorLog("system", i18n.Tfmt("下載 %s 失敗", spec.name), err)
+			addErrorLog("system", fmt.Sprintf("Download failed for %s", spec.name), err)
 			return
 		}
 
 		binDir := filepath.Join(baseDir, "bin")
 		if strings.HasSuffix(spec.destZip, ".zip") {
 			fyne.Do(func() {
-				statusLabel.SetText(i18n.Tfmt("正在解壓縮 %s...", spec.name))
+				statusLabel.SetText(fmt.Sprintf("Extracting %s...", spec.name))
 				progressBar.SetValue(0.5)
 			})
-			addLog("system", i18n.Tfmt("正在解壓縮: %s...", spec.name))
+			addLog("system", fmt.Sprintf("Extracting: %s...", spec.name))
 
 			err = downloader.Unzip(spec.destZip, spec.destDir)
 			if err != nil {
 				hasError = true
 				fyne.Do(func() {
-					statusLabel.SetText(i18n.Tfmt("解壓縮 %s 失敗:\n%v", spec.name, err))
+					statusLabel.SetText(fmt.Sprintf("Extraction failed for %s:\n%v", spec.name, err))
 					bgBtn.Hide()
 					backBtn.Show()
 					closeBtn.Show()
 					buttonBox.Refresh()
 				})
-				addErrorLog("system", i18n.Tfmt("解壓縮 %s 失敗", spec.name), err)
+				addErrorLog("system", fmt.Sprintf("Extraction failed for %s", spec.name), err)
 				return
 			}
 
@@ -3056,7 +3092,7 @@ func startSingleDependencyDownload(win fyne.Window, spec depSpec) {
 					// 刪除已存在的 newDir 以防 rename 失敗，保證全新覆蓋
 					os.RemoveAll(newDir)
 					if renameErr := os.Rename(oldDir, newDir); renameErr != nil {
-						addErrorLog("system", i18n.T("MariaDB 目錄重新命名失敗"), renameErr)
+						addErrorLog("system", "MariaDB directory rename failed", renameErr)
 					}
 				}
 			}
@@ -3068,7 +3104,7 @@ func startSingleDependencyDownload(win fyne.Window, spec depSpec) {
 				if _, err := os.Stat(oldDir); err == nil {
 					if _, err := os.Stat(newDir); os.IsNotExist(err) {
 						if renameErr := os.Rename(oldDir, newDir); renameErr != nil {
-							addErrorLog("system", i18n.T("Node.js 目錄重新命名失敗"), renameErr)
+							addErrorLog("system", "Node.js directory rename failed", renameErr)
 						}
 					}
 				}
@@ -3096,14 +3132,14 @@ func startSingleDependencyDownload(win fyne.Window, spec depSpec) {
 				batPath := filepath.Join(spec.destDir, "composer.bat")
 				batContent := `@php "%~dp0composer.phar" %*`
 				if err := os.WriteFile(batPath, []byte(batContent), 0755); err != nil {
-					addErrorLog("system", i18n.T("建立 composer.bat 失敗"), err)
+					addErrorLog("system", "Failed to create composer.bat", err)
 				}
 			}
 		}
 
 		if !hasError {
 			fyne.Do(func() {
-				statusLabel.SetText(i18n.Tfmt("%s 已安裝並設定完成！", spec.name))
+				statusLabel.SetText(fmt.Sprintf("%s has been installed and configured!", spec.name))
 				progressBar.SetValue(1.0)
 				bgBtn.Hide()
 				backBtn.Show()
@@ -3113,9 +3149,9 @@ func startSingleDependencyDownload(win fyne.Window, spec depSpec) {
 				var scanErr error
 				scanRes, scanErr = scanner.ScanBinDir(baseDir)
 				if scanErr != nil {
-					addErrorLog("system", i18n.T("重新掃描失敗"), scanErr)
+					addErrorLog("system", "Rescan failed", scanErr)
 				} else {
-					addLog("system", i18n.Tfmt("%s 安裝完成，正在重新載入儀表板...", spec.name))
+					addLog("system", fmt.Sprintf("Installation of %s completed, reloading dashboard...", spec.name))
 					newDashboard := createDashboard(win, func() {})
 					mainTabs.Items[0].Content = newDashboard
 					mainTabs.Refresh()
@@ -3127,7 +3163,7 @@ func startSingleDependencyDownload(win fyne.Window, spec depSpec) {
 
 // createCaddyRow 建立 Caddy 服務列
 func createCaddyRow(win fyne.Window, info scanner.ServiceInfo, refreshProjects func()) fyne.CanvasObject {
-	statusLabel := widget.NewLabel(i18n.T("已停止"))
+	statusLabel := widget.NewLabel("Stopped")
 	uptimeData := binding.NewString()
 	uptimeData.Set("")
 	uptimeLabel := widget.NewLabelWithData(uptimeData)
@@ -3144,7 +3180,7 @@ func createCaddyRow(win fyne.Window, info scanner.ServiceInfo, refreshProjects f
 	})
 	reloadBtn.Disable() // 初始禁用
 
-	actionBtn = widget.NewButton(i18n.T("啟動"), func() {
+	actionBtn = widget.NewButton("Start", func() {
 		if !procMgr.IsRunning("caddy") {
 			blocked := port.CheckPorts([]port.PortInfo{
 				{Service: "Caddy", Port: 80},
@@ -3172,9 +3208,9 @@ func createCaddyRow(win fyne.Window, info scanner.ServiceInfo, refreshProjects f
 			}
 			pids := procMgr.GetPIDs("caddy")
 			if len(pids) > 0 {
-				statusLabel.SetText(i18n.Tfmt("運行中 (PID: %d)", pids[0]))
+				statusLabel.SetText(fmt.Sprintf("Running (PID: %d)", pids[0]))
 			}
-			actionBtn.SetText(i18n.T("停止"))
+			actionBtn.SetText("Stop")
 			actionBtn.SetIcon(theme.CancelIcon())
 			reloadBtn.Enable()
 			monitorUptime("caddy", uptimeData)
@@ -3185,8 +3221,8 @@ func createCaddyRow(win fyne.Window, info scanner.ServiceInfo, refreshProjects f
 				addErrorLog("caddy", i18n.T("停止 Caddy 失敗"), err)
 				return
 			}
-			statusLabel.SetText(i18n.T("已停止"))
-			actionBtn.SetText(i18n.T("啟動"))
+			statusLabel.SetText("Stopped")
+			actionBtn.SetText("Start")
 			actionBtn.SetIcon(theme.MediaPlayIcon())
 			reloadBtn.Disable()
 			uptimeData.Set("")
@@ -3197,9 +3233,9 @@ func createCaddyRow(win fyne.Window, info scanner.ServiceInfo, refreshProjects f
 	if procMgr.IsRunning("caddy") {
 		pids := procMgr.GetPIDs("caddy")
 		if len(pids) > 0 {
-			statusLabel.SetText(i18n.Tfmt("運行中 (PID: %d)", pids[0]))
+			statusLabel.SetText(fmt.Sprintf("Running (PID: %d)", pids[0]))
 		}
-		actionBtn.SetText(i18n.T("停止"))
+		actionBtn.SetText("Stop")
 		actionBtn.SetIcon(theme.CancelIcon())
 		reloadBtn.Enable()
 		monitorUptime("caddy", uptimeData)
@@ -3209,7 +3245,7 @@ func createCaddyRow(win fyne.Window, info scanner.ServiceInfo, refreshProjects f
 
 	// 初始化主題包裝器 (使用閉包檢查按鈕文字)
 	actionBtnWrapper := container.NewThemeOverride(actionBtn, &coloredButtonTheme{
-		isStop: func() bool { return actionBtn.Text == i18n.T("停止") },
+		isStop: func() bool { return actionBtn.Text == "Stop" },
 	})
 
 	// 更新按鈕點擊後的顏色切換邏輯 (SetText 會觸發 Refresh)
@@ -3233,7 +3269,7 @@ func createCaddyRow(win fyne.Window, info scanner.ServiceInfo, refreshProjects f
 
 // createMariaDBRow 建立 MariaDB 服務列
 func createMariaDBRow(win fyne.Window, info scanner.ServiceInfo) fyne.CanvasObject {
-	statusLabel := widget.NewLabel(i18n.T("已停止"))
+	statusLabel := widget.NewLabel("Stopped")
 	uptimeData := binding.NewString()
 	uptimeData.Set("")
 	uptimeLabel := widget.NewLabelWithData(uptimeData)
@@ -3251,7 +3287,7 @@ func createMariaDBRow(win fyne.Window, info scanner.ServiceInfo) fyne.CanvasObje
 		versionLabel = "External"
 	}
 
-	actionBtn = widget.NewButton(i18n.T("啟動"), func() {
+	actionBtn = widget.NewButton("Start", func() {
 		if !procMgr.IsRunning(serviceKey) {
 			checkPort := 3306
 			if appCfg.Global.MariaDBPort > 0 {
@@ -3268,7 +3304,7 @@ func createMariaDBRow(win fyne.Window, info scanner.ServiceInfo) fyne.CanvasObje
 			}
 
 			startMariaDBWithUI := func() {
-				overlay := showCenterOverlay(win, i18n.T("啟動資料庫中，請稍候..."), color.White, 180)
+				overlay := showCenterOverlay(win, "啟動資料庫中，請稍候...", color.White, 180)
 
 				go func() {
 					done, errCh := procMgr.StartMariaDBAsync(
@@ -3292,11 +3328,11 @@ func createMariaDBRow(win fyne.Window, info scanner.ServiceInfo) fyne.CanvasObje
 					pids := procMgr.GetPIDs(serviceKey)
 					if len(pids) > 0 {
 						fyne.Do(func() {
-							statusLabel.SetText(i18n.Tfmt("運行中 (PID: %d)", pids[0]))
+							statusLabel.SetText(fmt.Sprintf("Running (PID: %d)", pids[0]))
 						})
 					}
 					fyne.Do(func() {
-						actionBtn.SetText(i18n.T("停止"))
+						actionBtn.SetText("Stop")
 						actionBtn.SetIcon(theme.CancelIcon())
 					})
 					monitorUptime(serviceKey, uptimeData)
@@ -3344,8 +3380,8 @@ func createMariaDBRow(win fyne.Window, info scanner.ServiceInfo) fyne.CanvasObje
 				addErrorLog("mariadb", i18n.Tfmt("停止 %s 失敗", serviceName), err)
 				return
 			}
-			statusLabel.SetText(i18n.T("已停止"))
-			actionBtn.SetText(i18n.T("啟動"))
+			statusLabel.SetText("Stopped")
+			actionBtn.SetText("Start")
 			actionBtn.SetIcon(theme.MediaPlayIcon())
 			uptimeData.Set("")
 			saveLastServiceState()
@@ -3355,9 +3391,9 @@ func createMariaDBRow(win fyne.Window, info scanner.ServiceInfo) fyne.CanvasObje
 	if procMgr.IsRunning(serviceKey) {
 		pids := procMgr.GetPIDs(serviceKey)
 		if len(pids) > 0 {
-			statusLabel.SetText(i18n.Tfmt("運行中 (PID: %d)", pids[0]))
+			statusLabel.SetText(fmt.Sprintf("Running (PID: %d)", pids[0]))
 		}
-		actionBtn.SetText(i18n.T("停止"))
+		actionBtn.SetText("Stop")
 		actionBtn.SetIcon(theme.CancelIcon())
 		monitorUptime(serviceKey, uptimeData)
 	} else {
@@ -3365,7 +3401,7 @@ func createMariaDBRow(win fyne.Window, info scanner.ServiceInfo) fyne.CanvasObje
 	}
 
 	actionBtnWrapper := container.NewThemeOverride(actionBtn, &coloredButtonTheme{
-		isStop: func() bool { return actionBtn.Text == i18n.T("停止") },
+		isStop: func() bool { return actionBtn.Text == "Stop" },
 	})
 	originalCallback := actionBtn.OnTapped
 	actionBtn.OnTapped = func() {
@@ -3396,7 +3432,7 @@ func createMariaDBRow(win fyne.Window, info scanner.ServiceInfo) fyne.CanvasObje
 
 // createMailpitRow 建立 Mailpit 服務列
 func createMailpitRow(win fyne.Window, info scanner.ServiceInfo) fyne.CanvasObject {
-	statusLabel := widget.NewLabel(i18n.T("已停止"))
+	statusLabel := widget.NewLabel("Stopped")
 	uptimeData := binding.NewString()
 	uptimeData.Set("")
 	uptimeLabel := widget.NewLabelWithData(uptimeData)
@@ -3414,7 +3450,7 @@ func createMailpitRow(win fyne.Window, info scanner.ServiceInfo) fyne.CanvasObje
 
 	portStr := fmt.Sprintf("%d, %d", smtpPort, httpPort)
 
-	actionBtn = widget.NewButton(i18n.T("啟動"), func() {
+	actionBtn = widget.NewButton("Start", func() {
 		if !procMgr.IsRunning(process.MailpitServiceKey()) {
 			blocked := port.CheckPorts([]port.PortInfo{
 				{Service: "Mailpit SMTP", Port: smtpPort},
@@ -3433,9 +3469,9 @@ func createMailpitRow(win fyne.Window, info scanner.ServiceInfo) fyne.CanvasObje
 			}
 			pids := procMgr.GetPIDs(process.MailpitServiceKey())
 			if len(pids) > 0 {
-				statusLabel.SetText(i18n.Tfmt("運行中 (PID: %d)", pids[0]))
+				statusLabel.SetText(fmt.Sprintf("Running (PID: %d)", pids[0]))
 			}
-			actionBtn.SetText(i18n.T("停止"))
+			actionBtn.SetText("Stop")
 			actionBtn.SetIcon(theme.CancelIcon())
 			monitorUptime(process.MailpitServiceKey(), uptimeData)
 			saveLastServiceState()
@@ -3444,8 +3480,8 @@ func createMailpitRow(win fyne.Window, info scanner.ServiceInfo) fyne.CanvasObje
 				addErrorLog("mailpit", i18n.T("停止 Mailpit 失敗"), err)
 				return
 			}
-			statusLabel.SetText(i18n.T("已停止"))
-			actionBtn.SetText(i18n.T("啟動"))
+			statusLabel.SetText("Stopped")
+			actionBtn.SetText("Start")
 			actionBtn.SetIcon(theme.MediaPlayIcon())
 			uptimeData.Set("")
 			saveLastServiceState()
@@ -3455,9 +3491,9 @@ func createMailpitRow(win fyne.Window, info scanner.ServiceInfo) fyne.CanvasObje
 	if procMgr.IsRunning(process.MailpitServiceKey()) {
 		pids := procMgr.GetPIDs(process.MailpitServiceKey())
 		if len(pids) > 0 {
-			statusLabel.SetText(i18n.Tfmt("運行中 (PID: %d)", pids[0]))
+			statusLabel.SetText(fmt.Sprintf("Running (PID: %d)", pids[0]))
 		}
-		actionBtn.SetText(i18n.T("停止"))
+		actionBtn.SetText("Stop")
 		actionBtn.SetIcon(theme.CancelIcon())
 		monitorUptime(process.MailpitServiceKey(), uptimeData)
 	} else {
@@ -3465,7 +3501,7 @@ func createMailpitRow(win fyne.Window, info scanner.ServiceInfo) fyne.CanvasObje
 	}
 
 	actionBtnWrapper := container.NewThemeOverride(actionBtn, &coloredButtonTheme{
-		isStop: func() bool { return actionBtn.Text == i18n.T("停止") },
+		isStop: func() bool { return actionBtn.Text == "Stop" },
 	})
 	originalCallback := actionBtn.OnTapped
 	actionBtn.OnTapped = func() {
@@ -3616,7 +3652,7 @@ func showMailpitSettingsDialog(win fyne.Window) {
 
 // createPHPRow 建立 PHP-CGI 服務列
 func createPHPRow(info scanner.PHPVersionInfo) fyne.CanvasObject {
-	statusLabel := widget.NewLabel(i18n.T("已停止"))
+	statusLabel := widget.NewLabel("Stopped")
 	uptimeData := binding.NewString()
 	uptimeData.Set("")
 	uptimeLabel := widget.NewLabelWithData(uptimeData)
@@ -3667,13 +3703,6 @@ func createPHPRow(info scanner.PHPVersionInfo) fyne.CanvasObject {
 		cfgPath := filepath.Join(baseDir, "conf", "wincmp.json")
 		appCfg.Save(cfgPath)
 
-		// 同步更新記憶體中的 scanRes.PHPList，以防彈窗啟動等流程讀到舊的進程數
-		for idx := range scanRes.PHPList {
-			if scanRes.PHPList[idx].MajorMin == info.MajorMin {
-				scanRes.PHPList[idx].PortCount = count
-			}
-		}
-
 		addLog("php", i18n.Tfmt("PHP %s 進程數變更為 %d (重啟後生效)", info.MajorMin, count))
 
 		if procMgr.IsRunning("caddy") {
@@ -3684,7 +3713,7 @@ func createPHPRow(info scanner.PHPVersionInfo) fyne.CanvasObject {
 	var actionBtn *widget.Button
 	serviceKey := process.PHPServiceKey(info.Version)
 
-	actionBtn = widget.NewButton(i18n.T("啟動"), func() {
+	actionBtn = widget.NewButton("Start", func() {
 		if !procMgr.IsRunning(serviceKey) {
 			ports := info.GetPHPPorts()
 			var portInfos []port.PortInfo
@@ -3727,8 +3756,8 @@ func createPHPRow(info scanner.PHPVersionInfo) fyne.CanvasObject {
 
 	if procMgr.IsRunning(serviceKey) {
 		pids := procMgr.GetPIDs(serviceKey)
-		statusLabel.SetText(i18n.Tfmt("運行中 (%d 個 PID)", len(pids)))
-		actionBtn.SetText(i18n.T("停止"))
+		statusLabel.SetText(fmt.Sprintf("Running (%d PIDs)", len(pids)))
+		actionBtn.SetText("Stop")
 		actionBtn.SetIcon(theme.CancelIcon())
 		processSelect.Disable()
 		monitorUptime(serviceKey, uptimeData)
@@ -3737,7 +3766,7 @@ func createPHPRow(info scanner.PHPVersionInfo) fyne.CanvasObject {
 	}
 
 	actionBtnWrapper := container.NewThemeOverride(actionBtn, &coloredButtonTheme{
-		isStop: func() bool { return actionBtn.Text == i18n.T("停止") },
+		isStop: func() bool { return actionBtn.Text == "Stop" },
 	})
 	originalCallback := actionBtn.OnTapped
 	actionBtn.OnTapped = func() {
@@ -3785,14 +3814,14 @@ func refreshAllPHPStatus() {
 		serviceKey := process.PHPServiceKey(info.Version)
 		if procMgr.IsRunning(serviceKey) {
 			pids := procMgr.GetPIDs(serviceKey)
-			ui.StatusLabel.SetText(i18n.Tfmt("運行中 (%d 個 PID)", len(pids)))
-			ui.ActionBtn.SetText(i18n.T("停止"))
+			ui.StatusLabel.SetText(fmt.Sprintf("Running (%d PIDs)", len(pids)))
+			ui.ActionBtn.SetText("Stop")
 			ui.ActionBtn.SetIcon(theme.CancelIcon())
 			ui.ProcessSelect.Disable()
 			monitorUptime(serviceKey, ui.UptimeData)
 		} else {
-			ui.StatusLabel.SetText(i18n.T("已停止"))
-			ui.ActionBtn.SetText(i18n.T("啟動"))
+			ui.StatusLabel.SetText("Stopped")
+			ui.ActionBtn.SetText("Start")
 			ui.ActionBtn.SetIcon(theme.MediaPlayIcon())
 			ui.ProcessSelect.Enable()
 			ui.UptimeData.Set("")
@@ -4188,31 +4217,31 @@ func showProjectEditor(win fyne.Window, proj *config.ProjectConfig, onSave func(
 }
 
 func createProjectsTab(win fyne.Window) fyne.CanvasObject {
-	title := widget.NewLabelWithStyle(i18n.T("網頁專案"), fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
+	title := widget.NewLabelWithStyle("Web Projects", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
 
 	// 定義固定寬度的透明矩形來撐開欄位
 	projectRect := canvas.NewRectangle(color.Transparent)
 	projectRect.SetMinSize(fyne.NewSize(150, 0))
-	projectH := container.NewStack(widget.NewLabelWithStyle(i18n.T("專案"), fyne.TextAlignLeading, fyne.TextStyle{Bold: true}), projectRect)
+	projectH := container.NewStack(widget.NewLabelWithStyle("Project", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}), projectRect)
 
 	availabilityRect := canvas.NewRectangle(color.Transparent)
 	availabilityRect.SetMinSize(fyne.NewSize(120, 0))
-	availabilityH := container.NewStack(widget.NewLabelWithStyle(i18n.T("可用性"), fyne.TextAlignLeading, fyne.TextStyle{Bold: true}), availabilityRect)
+	availabilityH := container.NewStack(widget.NewLabelWithStyle("Availability", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}), availabilityRect)
 
 	typeRect := canvas.NewRectangle(color.Transparent)
 	typeRect.SetMinSize(fyne.NewSize(100, 0))
-	typeH := container.NewStack(widget.NewLabelWithStyle(i18n.T("類型"), fyne.TextAlignLeading, fyne.TextStyle{Bold: true}), typeRect)
+	typeH := container.NewStack(widget.NewLabelWithStyle("Type", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}), typeRect)
 
 	header := container.NewBorder(nil, nil,
 		container.NewHBox(projectH, availabilityH, typeH),
 		nil,
 		container.NewGridWithColumns(2,
-			widget.NewLabelWithStyle(i18n.T("網域"), fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
-			widget.NewLabelWithStyle(i18n.T("根目錄"), fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+			widget.NewLabelWithStyle("Domains", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+			widget.NewLabelWithStyle("Root Path", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
 		),
 	)
 
-	actionH := widget.NewLabelWithStyle(i18n.T("操作"), fyne.TextAlignCenter, fyne.TextStyle{Bold: true})
+	actionH := widget.NewLabelWithStyle("Action", fyne.TextAlignCenter, fyne.TextStyle{Bold: true})
 	// 使用 Container 包裝 Action 並設定最小寬度以對齊下方的兩個按鈕 (約 70-80px)
 	actionRect := canvas.NewRectangle(color.Transparent)
 	actionRect.SetMinSize(fyne.NewSize(76, 0))
@@ -4273,10 +4302,10 @@ func createProjectsTab(win fyne.Window) fyne.CanvasObject {
 			projectBox.Refresh()
 
 			// Availability
-			availText := i18n.T("已禁用")
+			availText := "Disabled"
 			availColor := color.NRGBA{R: 244, G: 67, B: 54, A: 255} // Red
 			if proj.Enabled {
-				availText = i18n.T("已啟用")
+				availText = "Enabled"
 				availColor = color.NRGBA{R: 76, G: 175, B: 80, A: 255} // Green
 			}
 			availLabel := canvas.NewText(availText, availColor)
@@ -4290,7 +4319,7 @@ func createProjectsTab(win fyne.Window) fyne.CanvasObject {
 			// Type
 			typeText := preset.GetProjectTypeLabel(proj.Type)
 			if proj.Type == "" {
-				typeText = i18n.T("靜態")
+				typeText = "Static"
 			}
 			if proj.Type == "" && proj.RuntimeType != "" && proj.RuntimeType != "none" {
 				typeText = preset.GetRuntimeLabel(proj.RuntimeType)
@@ -4375,7 +4404,7 @@ func createProjectsTab(win fyne.Window) fyne.CanvasObject {
 		},
 	)
 
-	addBtn := widget.NewButtonWithIcon(i18n.T("新增專案"), theme.ContentAddIcon(), func() {
+	addBtn := widget.NewButtonWithIcon("Add Project", theme.ContentAddIcon(), func() {
 		openZenitySelector(
 			win,
 			"", // 新增沒有預設路徑，直接用 fallback
@@ -4385,7 +4414,7 @@ func createProjectsTab(win fyne.Window) fyne.CanvasObject {
 				name := filepath.Base(path)
 				for _, p := range appCfg.Projects {
 					if p.Name == name {
-						dialog.ShowError(fmt.Errorf("%s", i18n.Tfmt("專案 %s 已存在", name)), win)
+						dialog.ShowError(fmt.Errorf("專案 %s 已存在", name), win)
 						return
 					}
 				}
@@ -4449,7 +4478,7 @@ func createProjectsTab(win fyne.Window) fyne.CanvasObject {
 				if projectType == preset.TypeLaravel {
 					phpInfo := ""
 					if phpVersion != "" {
-						phpInfo = i18n.Tfmt(", 建議 PHP: %s", phpVersion)
+						phpInfo = fmt.Sprintf(", 建議 PHP: %s", phpVersion)
 					}
 					addLog("system", i18n.Tfmt("  ↳ 偵測為 Laravel%s (Confidence: %d, Reasons: %s)", phpInfo, detRes.Confidence, strings.Join(detRes.Reasons, ", ")))
 				} else if projectType != "" && projectType != preset.TypeStatic {
@@ -4460,7 +4489,7 @@ func createProjectsTab(win fyne.Window) fyne.CanvasObject {
 		)
 	})
 
-	scanBtn := widget.NewButtonWithIcon(i18n.T("掃描 WWW"), theme.SearchIcon(), func() {
+	scanBtn := widget.NewButtonWithIcon("Scan WWW", theme.SearchIcon(), func() {
 		if appCfg.Global.DefaultWWW == "" {
 			dialog.ShowInformation(i18n.T("提示"), i18n.T("尚未設定預設 WWW 目錄，請至 Settings 頁面設定。"), win)
 			return
@@ -4497,15 +4526,7 @@ func createProjectsTab(win fyne.Window) fyne.CanvasObject {
 	scanBtnWrap := container.NewHBox(scanBtn, addBtn)
 
 	topBar := container.NewBorder(nil, nil, nil, scanBtnWrap, title)
-	content := container.NewBorder(
-		container.NewVBox(
-			topBar,
-			widget.NewSeparator(),
-			headerContainer,
-			widget.NewSeparator(),
-		),
-		nil, nil, nil, list,
-	)
+	content := container.NewBorder(container.NewVBox(topBar, headerContainer), nil, nil, nil, list)
 	return content
 }
 
@@ -4542,36 +4563,29 @@ func getDBPool() (*sql.DB, error) {
 	}
 
 	db, err := sql.Open("mysql", dsn)
-=======
-//go:embed all:frontend/dist
-var assets embed.FS
-
-func main() {
-	// 建立應用程式實例
-	app := NewApp()
-
-	// 啟動 Wails 視窗應用程式
-	err := wails.Run(&options.App{
-		Title:  "WinCMP Control Panel",
-		Width:  1024,
-		Height: 720,
-		AssetServer: &assetserver.Options{
-			Assets: assets,
-		},
-		BackgroundColour: &options.RGBA{R: 27, G: 38, B: 54, A: 1},
-		OnStartup:        app.startup,
-		OnShutdown:       app.shutdown,
-		Bind: []interface{}{
-			app,
-		},
-	})
-
->>>>>>> fe5427b (wip: save current wails react changes before rebase)
 	if err != nil {
-		println("Error:", err.Error())
+		return nil, err
+	}
+	db.SetMaxOpenConns(3)
+	db.SetMaxIdleConns(1)
+	db.SetConnMaxLifetime(30 * time.Second)
+	db.SetConnMaxIdleTime(10 * time.Second)
+
+	dbPool = db
+	dbPoolDSN = dsn
+	return dbPool, nil
+}
+
+// closeDBPool 關閉 MariaDB 連線池
+func closeDBPool() {
+	dbPoolMu.Lock()
+	defer dbPoolMu.Unlock()
+	if dbPool != nil {
+		dbPool.Close()
+		dbPool = nil
+		dbPoolDSN = ""
 	}
 }
-<<<<<<< HEAD
 
 func createDatabaseExplorerTab() (fyne.CanvasObject, func()) {
 	title := widget.NewLabelWithStyle("Database Explorer", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
@@ -4822,14 +4836,14 @@ func createDatabaseExplorerTab() (fyne.CanvasObject, func()) {
 	}
 
 	// 頂部按鈕列
-	refreshBtn := widget.NewButtonWithIcon(i18n.T("重新整理"), theme.ViewRefreshIcon(), func() {
-		notRunningMsg.SetText(i18n.T("請先至 Dashboard 頁面啟動 MariaDB 服務，\n再使用 Database Explorer。"))
+	refreshBtn := widget.NewButtonWithIcon("Refresh", theme.ViewRefreshIcon(), func() {
+		notRunningMsg.SetText("請先至 Dashboard 頁面啟動 MariaDB 服務，\n再使用 Database Explorer。")
 		dbTabLock.Lock()
 		defer dbTabLock.Unlock()
 		refreshUI()
 	})
 
-	heidiSQLBtn := widget.NewButtonWithIcon(i18n.T("使用 HeidiSQL 開啟"), theme.ComputerIcon(), func() {
+	heidiSQLBtn := widget.NewButtonWithIcon("Open in HeidiSQL", theme.ComputerIcon(), func() {
 		if len(scanRes.HeidiSQLList) == 0 {
 			addLog("system", i18n.T("DB Explorer: 找不到 HeidiSQL 執行檔"))
 			return
@@ -5043,7 +5057,7 @@ func createSettingsTab(win fyne.Window) fyne.CanvasObject {
 			if err := appCfg.Save(cfgPath); err != nil {
 				addErrorLog("system", i18n.T("自動儲存設定失敗"), err)
 			} else {
-				addLog("system", i18n.Tfmt("⚙️ %s: [%v] ➔ [%v] (Auto Saved)", settingName, oldVal, newVal))
+				addLog("system", fmt.Sprintf("⚙️ %s: [%v] ➔ [%v] (Auto Saved)", settingName, oldVal, newVal))
 				cleanupOldLogs(days)
 			}
 			mu.Unlock()
@@ -5347,7 +5361,7 @@ func showMariaDBSettingsDialog(win fyne.Window) {
 		basedir := binaryPathEntry.Text
 		datadir := dataPathEntry.Text
 		dbTypeSel := typeSelect.Selected
-
+ 
 		portStr := portEntry.Text
 		portVal := 0
 		if portStr != "" {
@@ -5358,7 +5372,7 @@ func showMariaDBSettingsDialog(win fyne.Window) {
 				return
 			}
 		}
-
+ 
 		if portVal > 0 {
 			blocked := port.CheckPorts([]port.PortInfo{
 				{Service: "MariaDB", Port: portVal},
@@ -5370,7 +5384,7 @@ func showMariaDBSettingsDialog(win fyne.Window) {
 				}
 			}
 		}
-
+ 
 		if isExt {
 			if basedir == "" {
 				dialog.ShowError(errors.New(i18n.T("外部模式必須指定 Binary Path")), win)
@@ -5499,7 +5513,7 @@ func triggerHostsUpdate() {
 
 	if len(validMissing) == 0 {
 		// 沒有有效域名需要更新，直接返回
-		addErrorLog("system", i18n.T("更新系統 Hosts 失敗"), fmt.Errorf("%s", i18n.Tfmt("所有域名均含非法字元，請手動新增至 hosts: %v", invalidDomains)))
+		addErrorLog("system", i18n.T("更新系統 Hosts 失敗"), fmt.Errorf("所有域名均含非法字元，請手動新增至 hosts: %v", invalidDomains))
 		return
 	}
 
@@ -5546,32 +5560,32 @@ func showHostsWriteFailedDialog(missingDomains []string) {
 		hostsContent := sb.String()
 
 		desc := widget.NewLabel(i18n.T("由於沒有管理員權限，無法自動更新系統 Hosts 檔案。\n請手動將以下內容新增到您的系統 Hosts 中："))
-
+ 
 		richText := widget.NewRichText(
 			&widget.TextSegment{
 				Style: widget.RichTextStyleCodeBlock,
 				Text:  hostsContent,
 			},
 		)
-
+ 
 		copyBtn := widget.NewButtonWithIcon(i18n.T("複製內容"), theme.ContentCopyIcon(), func() {
 			win.Clipboard().SetContent(hostsContent)
 			dialog.ShowInformation(i18n.T("成功"), i18n.T("已複製到剪貼簿"), win)
 		})
-
+ 
 		openBtn := widget.NewButtonWithIcon(i18n.T("以管理員權限開啟 Hosts 檔案"), theme.DocumentCreateIcon(), func() {
 			cmd := exec.Command("powershell", "-Command", `Start-Process notepad.exe -ArgumentList "C:\Windows\System32\drivers\etc\hosts" -Verb runAs`)
 			if err := cmd.Run(); err != nil {
 				dialog.ShowError(fmt.Errorf(i18n.Tfmt("無法開啟 Hosts 檔案: %w", err), win), win)
 			}
 		})
-
+ 
 		content := container.NewVBox(
 			desc,
 			container.NewGridWrap(fyne.NewSize(500, 150), container.NewScroll(richText)),
 			container.NewHBox(copyBtn, openBtn),
 		)
-
+ 
 		d := dialog.NewCustom(i18n.T("Hosts 更新失敗"), i18n.T("關閉"), content, win)
 		d.Show()
 	})
@@ -5637,5 +5651,3 @@ func showCenterOverlay(win fyne.Window, text string, textColor color.Color, bgAl
 func hideCenterOverlay(win fyne.Window, overlay *loadingOverlay) {
 	win.Canvas().Overlays().Remove(overlay)
 }
-=======
->>>>>>> fe5427b (wip: save current wails react changes before rebase)

@@ -1,0 +1,590 @@
+import React, { useState, useEffect } from 'react';
+import { Play, Square, RefreshCw, Layers, Cpu, Database, Server, CheckCircle, XCircle, AlertTriangle, Package, Folder, LayoutGrid, Terminal } from 'lucide-react';
+import {
+  GetConfig,
+  SaveConfig,
+  ScanServices,
+  GetScanResult,
+  GetServicesStatus,
+  StartCaddy,
+  StopCaddy,
+  ReloadCaddy,
+  StartMariaDB,
+  StopMariaDB,
+  StartMailpit,
+  StopMailpit,
+  StartPHP,
+  StopPHP,
+  CheckMissingCoreDependencies
+} from '../../wailsjs/go/main/App';
+import { scanner } from '../../wailsjs/go/models';
+import DependencyManager from './DependencyManager';
+import { EventsOn, EventsOff } from '../../wailsjs/runtime/runtime';
+
+export default function Dashboard() {
+  const [config, setConfig] = useState<any>(null);
+  const [scanResult, setScanResult] = useState<scanner.ScanResult | null>(null);
+  const [servicesStatus, setServicesStatus] = useState<Record<string, boolean>>({});
+  const [loadingServices, setLoadingServices] = useState<Record<string, boolean>>({});
+  const [isScanning, setIsScanning] = useState(false);
+  const [showDepManager, setShowDepManager] = useState(false);
+  const [missingCore, setMissingCore] = useState<{ caddy: boolean; php: boolean; mariadb: boolean }>({
+    caddy: false,
+    php: false,
+    mariadb: false
+  });
+  const [dismissBanner, setDismissBanner] = useState(false);
+  const [systemResources, setSystemResources] = useState({ cpu: 0, memory: 0 });
+
+  // 載入基本設定與掃描結果
+  useEffect(() => {
+    async function initData() {
+      try {
+        const cfg = await GetConfig();
+        setConfig(cfg);
+        const scan = await GetScanResult();
+        setScanResult(scan);
+        await updateStatus();
+        
+        // 檢查核心依賴是否缺失
+        const missing = await CheckMissingCoreDependencies();
+        setMissingCore({
+          caddy: !!missing?.caddy,
+          php: !!missing?.php,
+          mariadb: !!missing?.mariadb
+        });
+      } catch (err) {
+        console.error("初始化資料失敗:", err);
+      }
+    }
+    initData();
+
+    // 訂閱 Go 端推送的 CPU / RAM 資源佔用
+    const handleResourceUpdate = (data: any) => {
+      if (data) {
+        setSystemResources({
+          cpu: data.cpu || 0,
+          memory: data.memory || 0
+        });
+      }
+    };
+    EventsOn('resource_usage', handleResourceUpdate);
+
+    return () => {
+      EventsOff('resource_usage');
+    };
+  }, []);
+
+  // 定時輪詢狀態 (每 2 秒)
+  useEffect(() => {
+    const timer = setInterval(() => {
+      updateStatus();
+    }, 2000);
+    return () => clearInterval(timer);
+  }, [scanResult]);
+
+  const updateStatus = async () => {
+    try {
+      const status = await GetServicesStatus();
+      setServicesStatus(status);
+    } catch (err) {
+      console.error("更新服務狀態失敗:", err);
+    }
+  };
+
+  const handleScan = async () => {
+    setIsScanning(true);
+    try {
+      const res = await ScanServices();
+      setScanResult(res);
+      await updateStatus();
+      const missing = await CheckMissingCoreDependencies();
+      setMissingCore({
+        caddy: !!missing?.caddy,
+        php: !!missing?.php,
+        mariadb: !!missing?.mariadb
+      });
+    } catch (err) {
+      console.error("掃描二進位服務失敗:", err);
+    } finally {
+      setIsScanning(false);
+    }
+  };
+
+  const handleServiceAction = async (serviceName: string, action: 'start' | 'stop' | 'reload', extraInfo?: any) => {
+    const key = `${serviceName}-${action}`;
+    setLoadingServices(prev => ({ ...prev, [key]: true }));
+
+    try {
+      if (serviceName === 'caddy') {
+        if (action === 'start') {
+          await StartCaddy(extraInfo.Version, extraInfo.ExePath);
+        } else if (action === 'stop') {
+          await StopCaddy();
+        } else if (action === 'reload') {
+          await ReloadCaddy();
+        }
+      } else if (serviceName.startsWith('mariadb')) {
+        const version = extraInfo.Version;
+        if (action === 'start') {
+          await StartMariaDB(version);
+        } else if (action === 'stop') {
+          await StopMariaDB(version);
+        }
+      } else if (serviceName === 'mailpit') {
+        if (action === 'start') {
+          const smtpPort = config?.global?.mailpit_smtp_port || 1025;
+          const httpPort = config?.global?.mailpit_http_port || 8025;
+          const useDB = config?.global?.mailpit_use_db || false;
+          await StartMailpit(extraInfo.Version, extraInfo.ExePath, smtpPort, httpPort, useDB);
+        } else if (action === 'stop') {
+          await StopMailpit();
+        }
+      } else if (serviceName.startsWith('php')) {
+        const version = extraInfo.Version;
+        if (action === 'start') {
+          await StartPHP(version);
+        } else if (action === 'stop') {
+          await StopPHP(version);
+        }
+      }
+      await updateStatus();
+    } catch (err: any) {
+      alert(`操作失敗: ${err}`);
+    } finally {
+      setLoadingServices(prev => ({ ...prev, [key]: false }));
+    }
+  };
+
+  const handlePHPProcessChange = async (majorMin: string, count: number) => {
+    if (!config) return;
+    const newCfg = { ...config };
+    if (!newCfg.global.php) {
+      newCfg.global.php = { processes: {} };
+    }
+    newCfg.global.php.processes[majorMin] = count;
+    try {
+      await SaveConfig(newCfg);
+      setConfig(newCfg);
+    } catch (err) {
+      alert(`保存設定失敗: ${err}`);
+    }
+  };
+
+  // 判斷服務是否運行中
+  const isRunning = (key: string) => !!servicesStatus[key];
+
+  // 計算運作中服務數量
+  const getRunningServicesCount = () => {
+    let count = 0;
+    if (isRunning('caddy')) count++;
+    if (scanResult?.MariaDBList?.[0] && isRunning(`mariadb-${scanResult.MariaDBList[0].Version}`)) count++;
+    if (isRunning('mailpit')) count++;
+    scanResult?.PHPList?.forEach(php => {
+      if (isRunning(`php-${php.Version}`)) count++;
+    });
+    return count;
+  };
+
+  return (
+    <div className="p-6 overflow-y-auto h-full space-y-6">
+      
+      {/* 核心依賴缺失警示橫幅 */}
+      {(missingCore.caddy || missingCore.php || missingCore.mariadb) && !dismissBanner && (
+        <div className="bg-red-500/10 border border-red-500/20 backdrop-blur-md rounded-xl p-4 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 shadow-lg shadow-red-950/5">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 bg-red-500/20 text-red-400 rounded-lg">
+              <AlertTriangle size={18} />
+            </div>
+            <div>
+              <span className="font-bold text-red-200 block text-sm">⚠️ 偵測到核心依賴元件缺失</span>
+              <span className="text-xs text-red-300/80 mt-0.5 block">
+                本機未安裝：
+                {[
+                  missingCore.caddy && "Caddy Web 伺服器",
+                  missingCore.php && "PHP 執行環境",
+                  missingCore.mariadb && "MariaDB 資料庫"
+                ].filter(Boolean).join("、")}。請先完成依賴安裝以確保專案與服務正常運作。
+              </span>
+            </div>
+          </div>
+          <div className="flex items-center gap-3 w-full md:w-auto">
+            <button
+              onClick={() => setShowDepManager(true)}
+              className="flex-1 md:flex-none px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition"
+            >
+              <Package size={14} /> 立即一鍵下載配置
+            </button>
+            <button
+              onClick={() => setDismissBanner(true)}
+              className="px-3 py-2 border border-darkBorder hover:bg-darkBorder rounded-lg text-xs text-gray-400 hover:text-gray-200 transition"
+            >
+              關閉
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 標頭 */}
+      <div className="flex justify-between items-center select-none">
+        <div>
+          <h1 className="text-xl font-bold tracking-tight text-white">⚡ 儀表板 (Dashboard)</h1>
+          <p className="text-xs text-gray-400 mt-1">管理 Caddy, MariaDB, PHP-CGI 與背景開發服務</p>
+        </div>
+        <div className="flex gap-2.5">
+          <button
+            onClick={() => setShowDepManager(true)}
+            className="px-3 py-2 rounded-lg text-xs font-semibold border border-darkBorder flex items-center gap-1.5 bg-darkCard hover:bg-opacity-80 transition duration-200 text-gray-200"
+          >
+            <Package size={13} className="text-blue-400" />
+            <span>依賴庫管理</span>
+          </button>
+          <button
+            onClick={handleScan}
+            disabled={isScanning}
+            className={`px-3 py-2 rounded-lg text-xs font-semibold border border-darkBorder flex items-center gap-1.5 bg-darkCard hover:bg-opacity-80 transition duration-200 ${isScanning ? 'opacity-50' : ''}`}
+          >
+            <RefreshCw size={13} className={isScanning ? 'animate-spin' : ''} />
+            {isScanning ? '掃描中...' : '重新掃描服務'}
+          </button>
+        </div>
+      </div>
+
+      {/* 頂部 Overview Cards */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 select-none">
+        {/* Card 1: CPU */}
+        <div className="bg-darkCard border border-darkBorder rounded-xl p-4 flex flex-col justify-between shadow-sm">
+          <div className="flex items-center justify-between text-gray-400">
+            <span className="text-xs font-semibold uppercase tracking-wider">CPU 佔用</span>
+            <Cpu size={16} className="text-blue-400" />
+          </div>
+          <div className="mt-2.5">
+            <span className="text-2xl font-black text-white tracking-tight">{systemResources.cpu.toFixed(1)}%</span>
+            <div className="w-full h-1 bg-darkInput rounded-full overflow-hidden mt-2">
+              <div
+                style={{ width: `${Math.min(systemResources.cpu * 5, 100)}%` }}
+                className="h-full bg-blue-500 rounded-full transition-all duration-500"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Card 2: Memory */}
+        <div className="bg-darkCard border border-darkBorder rounded-xl p-4 flex flex-col justify-between shadow-sm">
+          <div className="flex items-center justify-between text-gray-400">
+            <span className="text-xs font-semibold uppercase tracking-wider">記憶體 (RAM)</span>
+            <Layers size={16} className="text-indigo-400" />
+          </div>
+          <div className="mt-2.5">
+            <span className="text-2xl font-black text-white tracking-tight">{systemResources.memory} MB</span>
+            <div className="w-full h-1 bg-darkInput rounded-full overflow-hidden mt-2">
+              <div
+                style={{ width: `${Math.min(systemResources.memory / 2, 100)}%` }}
+                className="h-full bg-indigo-500 rounded-full transition-all duration-500"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Card 3: Running Services */}
+        <div className="bg-darkCard border border-darkBorder rounded-xl p-4 flex flex-col justify-between shadow-sm">
+          <div className="flex items-center justify-between text-gray-400">
+            <span className="text-xs font-semibold uppercase tracking-wider">運行中服務</span>
+            <Server size={16} className="text-green-400" />
+          </div>
+          <div className="mt-2.5">
+            <span className="text-2xl font-black text-white tracking-tight">{getRunningServicesCount()} / {(3 + (scanResult?.PHPList?.length || 0))}</span>
+            <p className="text-[10px] text-gray-500 mt-2 font-medium">包含 PHP FastCGI 多版本</p>
+          </div>
+        </div>
+
+        {/* Card 4: Projects */}
+        <div className="bg-darkCard border border-darkBorder rounded-xl p-4 flex flex-col justify-between shadow-sm">
+          <div className="flex items-center justify-between text-gray-400">
+            <span className="text-xs font-semibold uppercase tracking-wider">託管專案數</span>
+            <Folder size={16} className="text-teal-400" />
+          </div>
+          <div className="mt-2.5">
+            <span className="text-2xl font-black text-white tracking-tight">{config?.projects?.length || 0}</span>
+            <p className="text-[10px] text-gray-500 mt-2 font-medium">已啟用: {config?.projects?.filter((p: any) => p.enabled).length || 0} 個站點</p>
+          </div>
+        </div>
+      </div>
+
+      {/* 核心系統服務 (Grid 卡片化) */}
+      <div className="space-y-4">
+        <div className="flex items-center gap-2 select-none border-b border-darkBorder/40 pb-2">
+          <LayoutGrid size={15} className="text-blue-500" />
+          <h3 className="font-bold text-sm text-gray-300">核心系統服務</h3>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {/* Caddy */}
+          {(() => {
+            const caddy = scanResult?.CaddyList?.[0];
+            const running = isRunning('caddy');
+            const loadingStart = loadingServices['caddy-start'];
+            const loadingStop = loadingServices['caddy-stop'];
+            const loadingReload = loadingServices['caddy-reload'];
+            
+            return (
+              <div className="bg-darkCard border border-darkBorder rounded-xl p-5 flex flex-col justify-between hover:border-gray-700/80 transition duration-200 shadow-sm relative overflow-hidden">
+                <div className="absolute top-4 right-4 flex items-center gap-1.5 select-none">
+                  <span className="relative flex h-2 w-2">
+                    {running && <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>}
+                    <span className={`relative inline-flex rounded-full h-2 w-2 ${running ? 'bg-green-500' : 'bg-gray-500'}`}></span>
+                  </span>
+                  <span className={`text-[11px] font-bold ${running ? 'text-green-400' : 'text-gray-400'}`}>
+                    {running ? '運行中' : '已停止'}
+                  </span>
+                </div>
+
+                <div className="flex items-start gap-4">
+                  <div className={`p-2.5 rounded-lg ${running ? 'bg-blue-500/10 text-blue-400' : 'bg-gray-500/10 text-gray-400'}`}>
+                    <Server size={22} />
+                  </div>
+                  <div className="space-y-1">
+                    <h4 className="font-bold text-sm text-gray-100">Caddy 反向代理</h4>
+                    <p className="text-[11px] text-gray-500 font-medium">版本: {caddy ? caddy.Version : '未安裝'}</p>
+                    <p className="text-[11px] text-gray-400 font-mono">埠口: 80, 443, 2019</p>
+                  </div>
+                </div>
+
+                <div className="mt-5 pt-3.5 border-t border-darkBorder/40 flex gap-2">
+                  {!running ? (
+                    <button
+                      onClick={() => handleServiceAction('caddy', 'start', caddy)}
+                      disabled={loadingStart || !caddy}
+                      className="w-full py-1.5 bg-green-600/90 hover:bg-green-600 disabled:opacity-50 text-white rounded-lg text-xs font-semibold flex items-center justify-center gap-1 transition select-none"
+                    >
+                      <Play size={12} /> {loadingStart ? '啟動中...' : '啟動服務'}
+                    </button>
+                  ) : (
+                    <>
+                      <button
+                        onClick={() => handleServiceAction('caddy', 'stop', caddy)}
+                        disabled={loadingStop}
+                        className="flex-1 py-1.5 bg-red-950/40 hover:bg-red-950/60 border border-red-900/30 text-red-400 rounded-lg text-xs font-semibold flex items-center justify-center gap-1 transition select-none"
+                      >
+                        <Square size={12} /> {loadingStop ? '停止中...' : '停止'}
+                      </button>
+                      <button
+                        onClick={() => handleServiceAction('caddy', 'reload', caddy)}
+                        disabled={loadingReload}
+                        className="flex-1 py-1.5 bg-darkInput border border-darkBorder hover:bg-darkBorder text-gray-300 rounded-lg text-xs font-semibold flex items-center justify-center gap-1 transition select-none"
+                      >
+                        <RefreshCw size={12} /> {loadingReload ? '重載中...' : '重載'}
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* MariaDB */}
+          {(() => {
+            const mariadb = scanResult?.MariaDBList?.[0];
+            const serviceKey = mariadb ? `mariadb-${mariadb.Version}` : 'mariadb-none';
+            const running = isRunning(serviceKey);
+            const loadingStart = loadingServices[`${serviceKey}-start`];
+            const loadingStop = loadingServices[`${serviceKey}-stop`];
+            const dbPort = config?.global?.mariadb_port || 3306;
+
+            return (
+              <div className="bg-darkCard border border-darkBorder rounded-xl p-5 flex flex-col justify-between hover:border-gray-700/80 transition duration-200 shadow-sm relative overflow-hidden">
+                <div className="absolute top-4 right-4 flex items-center gap-1.5 select-none">
+                  <span className="relative flex h-2 w-2">
+                    {running && <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>}
+                    <span className={`relative inline-flex rounded-full h-2 w-2 ${running ? 'bg-green-500' : 'bg-gray-500'}`}></span>
+                  </span>
+                  <span className={`text-[11px] font-bold ${running ? 'text-green-400' : 'text-gray-400'}`}>
+                    {running ? '運行中' : '已停止'}
+                  </span>
+                </div>
+
+                <div className="flex items-start gap-4">
+                  <div className={`p-2.5 rounded-lg ${running ? 'bg-teal-500/10 text-teal-400' : 'bg-gray-500/10 text-gray-400'}`}>
+                    <Database size={22} />
+                  </div>
+                  <div className="space-y-1">
+                    <h4 className="font-bold text-sm text-gray-100">MariaDB 資料庫</h4>
+                    <p className="text-[11px] text-gray-500 font-medium">版本: {mariadb ? mariadb.Version : '未安裝'}</p>
+                    <p className="text-[11px] text-gray-400 font-mono">埠口: {dbPort}</p>
+                  </div>
+                </div>
+
+                <div className="mt-5 pt-3.5 border-t border-darkBorder/40 flex gap-2">
+                  {!running ? (
+                    <button
+                      onClick={() => handleServiceAction(serviceKey, 'start', mariadb)}
+                      disabled={loadingStart || !mariadb}
+                      className="w-full py-1.5 bg-green-600/90 hover:bg-green-600 disabled:opacity-50 text-white rounded-lg text-xs font-semibold flex items-center justify-center gap-1 transition select-none"
+                    >
+                      <Play size={12} /> {loadingStart ? '啟動中...' : '啟動服務'}
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => handleServiceAction(serviceKey, 'stop', mariadb)}
+                      disabled={loadingStop}
+                      className="w-full py-1.5 bg-red-950/40 hover:bg-red-950/60 border border-red-900/30 text-red-400 rounded-lg text-xs font-semibold flex items-center justify-center gap-1 transition select-none"
+                    >
+                      <Square size={12} /> {loadingStop ? '停止中...' : '停止服務'}
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* Mailpit */}
+          {(() => {
+            const mailpit = scanResult?.MailpitList?.[0];
+            const running = isRunning('mailpit');
+            const loadingStart = loadingServices['mailpit-start'];
+            const loadingStop = loadingServices['mailpit-stop'];
+            const httpPort = config?.global?.mailpit_http_port || 8025;
+            const smtpPort = config?.global?.mailpit_smtp_port || 1025;
+
+            return (
+              <div className="bg-darkCard border border-darkBorder rounded-xl p-5 flex flex-col justify-between hover:border-gray-700/80 transition duration-200 shadow-sm relative overflow-hidden">
+                <div className="absolute top-4 right-4 flex items-center gap-1.5 select-none">
+                  <span className="relative flex h-2 w-2">
+                    {running && <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>}
+                    <span className={`relative inline-flex rounded-full h-2 w-2 ${running ? 'bg-green-500' : 'bg-gray-500'}`}></span>
+                  </span>
+                  <span className={`text-[11px] font-bold ${running ? 'text-green-400' : 'text-gray-400'}`}>
+                    {running ? '運行中' : '已停止'}
+                  </span>
+                </div>
+
+                <div className="flex items-start gap-4">
+                  <div className={`p-2.5 rounded-lg ${running ? 'bg-purple-500/10 text-purple-400' : 'bg-gray-500/10 text-gray-400'}`}>
+                    <Cpu size={22} />
+                  </div>
+                  <div className="space-y-1">
+                    <h4 className="font-bold text-sm text-gray-100">Mailpit 測試郵件</h4>
+                    <p className="text-[11px] text-gray-500 font-medium">版本: {mailpit ? mailpit.Version : '未安裝'}</p>
+                    <p className="text-[11px] text-gray-400 font-mono">SMTP: {smtpPort} | HTTP: {httpPort}</p>
+                  </div>
+                </div>
+
+                <div className="mt-5 pt-3.5 border-t border-darkBorder/40 flex gap-2">
+                  {!running ? (
+                    <button
+                      onClick={() => handleServiceAction('mailpit', 'start', mailpit)}
+                      disabled={loadingStart || !mailpit}
+                      className="w-full py-1.5 bg-green-600/90 hover:bg-green-600 disabled:opacity-50 text-white rounded-lg text-xs font-semibold flex items-center justify-center gap-1 transition select-none"
+                    >
+                      <Play size={12} /> {loadingStart ? '啟動中...' : '啟動服務'}
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => handleServiceAction('mailpit', 'stop', mailpit)}
+                      disabled={loadingStop}
+                      className="w-full py-1.5 bg-red-950/40 hover:bg-red-950/60 border border-red-900/30 text-red-400 rounded-lg text-xs font-semibold flex items-center justify-center gap-1 transition select-none"
+                    >
+                      <Square size={12} /> {loadingStop ? '停止中...' : '停止服務'}
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
+        </div>
+      </div>
+
+      {/* PHP FastCGI 區塊 */}
+      <div className="space-y-4 pt-2">
+        <div className="flex items-center gap-2 select-none border-b border-darkBorder/40 pb-2">
+          <Server size={15} className="text-green-500" />
+          <h3 className="font-bold text-sm text-gray-300">PHP FastCGI 伺服器 (多端口負載平衡)</h3>
+        </div>
+
+        {scanResult?.PHPList && scanResult.PHPList.length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {scanResult.PHPList.map((php, idx) => {
+              const serviceKey = `php-${php.Version}`;
+              const running = isRunning(serviceKey);
+              const loadingStart = loadingServices[`${serviceKey}-start`];
+              const loadingStop = loadingServices[`${serviceKey}-stop`];
+              const configuredCount = config?.global?.php?.processes?.[php.MajorMin] || config?.global?.php?.processes_per_version || 3;
+
+              // 預計算 Port 範圍
+              const startPort = php.PortBase || (30000 + parseInt(php.MajorMin.replace('.', '')) * 10);
+              const endPort = startPort + configuredCount - 1;
+              const portDisplay = configuredCount > 1 ? `${startPort} ~ ${endPort}` : `${startPort}`;
+
+              return (
+                <div key={`php-${idx}`} className="bg-darkCard border border-darkBorder rounded-xl p-5 flex flex-col justify-between hover:border-gray-700/80 transition duration-200 shadow-sm relative overflow-hidden">
+                  <div className="absolute top-4 right-4 flex items-center gap-1.5 select-none">
+                    <span className="relative flex h-2 w-2">
+                      {running && <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>}
+                      <span className={`relative inline-flex rounded-full h-2 w-2 ${running ? 'bg-green-500' : 'bg-gray-500'}`}></span>
+                    </span>
+                    <span className={`text-[11px] font-bold ${running ? 'text-green-400' : 'text-gray-400'}`}>
+                      {running ? '運行中' : '已停止'}
+                    </span>
+                  </div>
+
+                  <div className="flex items-start gap-4">
+                    <div className={`p-2.5 rounded-lg ${running ? 'bg-green-500/10 text-green-400' : 'bg-gray-500/10 text-gray-400'}`}>
+                      <Server size={22} />
+                    </div>
+                    <div className="space-y-1">
+                      <h4 className="font-bold text-sm text-gray-100">PHP {php.Version}</h4>
+                      <p className="text-[11px] text-gray-400 font-mono">埠口: {portDisplay}</p>
+                    </div>
+                  </div>
+                  
+                  {/* 進程數量選擇與啟停 */}
+                  <div className="mt-4 space-y-3 pt-3 border-t border-darkBorder/40">
+                    <div className="flex items-center justify-between text-xs select-none">
+                      <span className="text-gray-500 font-semibold">進程數量 (Processes)</span>
+                      <select
+                        disabled={running}
+                        value={configuredCount}
+                        onChange={(e) => handlePHPProcessChange(php.MajorMin, parseInt(e.target.value))}
+                        className="bg-darkInput border border-darkBorder text-gray-300 rounded-lg px-2 py-1 outline-none focus:border-blue-500 disabled:opacity-50 transition cursor-pointer text-xs font-semibold"
+                      >
+                        {[1, 2, 3, 5, 10, 20, 50, 100].map(n => (
+                          <option key={n} value={n}>{n} 個進程</option>
+                        ))}
+                      </select>
+                    </div>
+                    
+                    <div className="flex gap-2">
+                      {!running ? (
+                        <button
+                          onClick={() => handleServiceAction(serviceKey, 'start', php)}
+                          disabled={loadingStart}
+                          className="w-full py-1.5 bg-green-600/90 hover:bg-green-600 text-white rounded-lg text-xs font-semibold flex items-center justify-center gap-1 transition select-none"
+                        >
+                          <Play size={12} /> {loadingStart ? '啟動中...' : '啟動 PHP'}
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => handleServiceAction(serviceKey, 'stop', php)}
+                          disabled={loadingStop}
+                          className="w-full py-1.5 bg-red-950/40 hover:bg-red-950/60 border border-red-900/30 text-red-400 rounded-lg text-xs font-semibold flex items-center justify-center gap-1 transition select-none"
+                        >
+                          <Square size={12} /> {loadingStop ? '停止中...' : '停止 PHP'}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="bg-darkCard border border-darkBorder rounded-xl p-8 text-center text-gray-400 select-none text-xs">
+            未偵測到任何已安裝的 PHP 版本。請將 PHP 解壓縮後放入 ./bin/php/ 目錄下。
+          </div>
+        )}
+      </div>
+
+      <DependencyManager isOpen={showDepManager} onClose={() => setShowDepManager(false)} onInstalled={handleScan} />
+    </div>
+  );
+}

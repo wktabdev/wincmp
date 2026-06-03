@@ -74,3 +74,5 @@ vendor/
 /conf/Caddyfile
 .sisyphus/
 .memory-bank/
+
+build/
