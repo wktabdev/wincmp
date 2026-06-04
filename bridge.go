@@ -781,7 +781,7 @@ func (a *App) QueryDatabases() ([]string, error) {
 	}
 	defer rows.Close()
 
-	var databases []string
+	var databases = []string{}
 	for rows.Next() {
 		var name string
 		if err := rows.Scan(&name); err == nil {
@@ -828,7 +828,7 @@ func (a *App) QueryTables(schema string) ([]string, error) {
 	}
 	defer rows.Close()
 
-	var tables []string
+	var tables = []string{}
 	for rows.Next() {
 		var tableName string
 		var tableRows sql.NullInt64

@@ -21,7 +21,7 @@ export default function DBExplorer() {
       setIsRunning(running);
       if (running) {
         const dbs = await QueryDatabases();
-        setDatabases(dbs);
+        setDatabases(dbs || []);
       }
     } catch (err) {
       console.error("檢查資料庫失敗:", err);
@@ -35,7 +35,7 @@ export default function DBExplorer() {
     setIsTablesLoading(true);
     try {
       const tbs = await QueryTables(schema);
-      setTables(tbs);
+      setTables(tbs || []);
     } catch (err) {
       console.error("載入資料表失敗:", err);
       setTables([`載入失敗: ${err}`]);
