@@ -71,6 +71,22 @@ export default function Projects() {
     { value: 'custom', label: 'Custom Command' }
   ];
 
+  const hasBundledRuntime = (rt?: string) => {
+    if (!rt || rt === 'none' || rt === 'custom') return false;
+    if (rt === 'node') {
+      return !!(scanResult?.NodeList && scanResult.NodeList.length > 0);
+    }
+    if (rt === 'bun') {
+      return !!(scanResult?.BunList && scanResult.BunList.length > 0);
+    }
+    if (rt === 'auto') {
+      const hasNode = !!(scanResult?.NodeList && scanResult.NodeList.length > 0);
+      const hasBun = !!(scanResult?.BunList && scanResult.BunList.length > 0);
+      return hasNode || hasBun;
+    }
+    return false;
+  };
+
   useEffect(() => {
     async function initData() {
       try {
@@ -164,7 +180,11 @@ export default function Projects() {
 
   const handleOpenEditModal = (proj: Project | null, idx: number | null) => {
     if (proj) {
-      setEditingProject({ ...proj });
+      const hasBin = hasBundledRuntime(proj.runtime_type);
+      setEditingProject({
+        ...proj,
+        use_wincmp_bin: hasBin ? proj.use_wincmp_bin : false
+      });
       setDetected(true);
     } else {
       // 預設全新專案結構
@@ -183,7 +203,7 @@ export default function Projects() {
         runtime_mode: 'Background',
         runtime_version: scanResult?.NodeList?.[0]?.Version || '',
         command: '',
-        use_wincmp_bin: true
+        use_wincmp_bin: false
       });
       setDetected(false);
     }
@@ -198,6 +218,7 @@ export default function Projects() {
     try {
       const res = await DetectProjectPath(path);
       if (res) {
+        const hasBin = hasBundledRuntime(res.runtime_type);
         setEditingProject({
           ...editingProject,
           root_path: path,
@@ -207,7 +228,8 @@ export default function Projects() {
           runtime_type: res.runtime_type || 'none',
           runtime_port: res.runtime_port || 3000,
           php_version: res.php_version || scanResult?.PHPList?.[0]?.MajorMin || '',
-          runtime_version: res.runtime_type === 'bun' ? scanResult?.BunList?.[0]?.Version : scanResult?.NodeList?.[0]?.Version || ''
+          runtime_version: res.runtime_type === 'bun' ? scanResult?.BunList?.[0]?.Version : scanResult?.NodeList?.[0]?.Version || '',
+          use_wincmp_bin: hasBin
         });
         setDetected(true);
       }
@@ -238,6 +260,11 @@ export default function Projects() {
     if (!editingProject || !config) return;
     if (!editingProject.name.trim()) {
       alert("專案名稱不能為空");
+      return;
+    }
+
+    if (editingProject.use_wincmp_bin && !hasBundledRuntime(editingProject.runtime_type)) {
+      alert("儲存失敗：您勾選了使用 WinCMP 內建執行檔，但系統未在 ./bin/ 下偵測到可用的 Node.js 或 Bun 執行檔。請先下載並放置於對應目錄，或取消勾選此選項以使用系統全域執行檔。");
       return;
     }
 
@@ -586,7 +613,15 @@ export default function Projects() {
                           <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-500">執行器 (Runtime)</label>
                           <select
                             value={editingProject.runtime_type}
-                            onChange={(e) => setEditingProject({ ...editingProject, runtime_type: e.target.value })}
+                            onChange={(e) => {
+                              const newRt = e.target.value;
+                              const hasBin = hasBundledRuntime(newRt);
+                              setEditingProject({
+                                ...editingProject,
+                                runtime_type: newRt,
+                                use_wincmp_bin: hasBin
+                              });
+                            }}
                             className="w-full bg-darkInput border border-darkBorder text-gray-100 rounded-lg px-3 py-2 outline-none focus:border-blue-500 transition cursor-pointer font-semibold"
                           >
                             {runtimeTypes.map(t => (
@@ -822,13 +857,15 @@ export default function Projects() {
       port = 3000;
     }
 
+    const hasBin = hasBundledRuntime(rt);
     setEditingProject({
       ...editingProject,
       type: type,
       runtime_type: rt,
       runtime_port: port,
       // 預設為該類型配置對應的 version
-      runtime_version: rt === 'bun' ? scanResult?.BunList?.[0]?.Version : scanResult?.NodeList?.[0]?.Version
+      runtime_version: rt === 'bun' ? scanResult?.BunList?.[0]?.Version : scanResult?.NodeList?.[0]?.Version,
+      use_wincmp_bin: hasBin
     });
   }
 }

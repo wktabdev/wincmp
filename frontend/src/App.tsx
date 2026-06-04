@@ -14,6 +14,14 @@ export default function App() {
   const [showLogs, setShowLogs] = useState(true);
   const [systemResources, setSystemResources] = useState({ cpu: 0, memory: 0 });
   const [isCollapsed, setIsCollapsed] = useState(() => localStorage.getItem('sidebar_collapsed') === 'true');
+  const [customAlert, setCustomAlert] = useState<{ isOpen: boolean; message: string }>({ isOpen: false, message: '' });
+
+  // 覆寫原生的 window.alert 以提供漂亮的自訂彈窗，避免 wails.localhost 標題
+  useEffect(() => {
+    window.alert = (message: any) => {
+      setCustomAlert({ isOpen: true, message: String(message) });
+    };
+  }, []);
 
   const toggleSidebar = () => {
     setIsCollapsed(prev => {
@@ -242,6 +250,27 @@ export default function App() {
           </div>
         )}
       </main>
+
+      {/* 全域自訂 Alert Modal */}
+      {customAlert.isOpen && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-[2px] animate-in fade-in duration-200 select-none">
+          <div className="w-full max-w-sm bg-darkCard border border-darkBorder rounded-xl shadow-2xl overflow-hidden p-5 flex flex-col space-y-4 animate-in zoom-in-95 duration-200">
+            <div className="flex items-center gap-2.5 text-blue-400 font-bold text-sm">
+              <span className="text-base">🔔</span>
+              <span>系統提示</span>
+            </div>
+            <p className="text-xs text-gray-300 leading-relaxed break-all whitespace-pre-line">{customAlert.message}</p>
+            <div className="flex justify-end pt-1">
+              <button
+                onClick={() => setCustomAlert({ isOpen: false, message: '' })}
+                className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold shadow-md shadow-blue-500/10 active:scale-[0.98] transition duration-150"
+              >
+                確定
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );

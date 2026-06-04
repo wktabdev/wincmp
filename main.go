@@ -58,6 +58,8 @@ func main() {
 		Title:  "WinCMP Control Panel",
 		Width:  1024,
 		Height: 720,
+		MinWidth:  1024,
+		MinHeight: 700,
 		AssetServer: &assetserver.Options{
 			Assets: assets,
 		},
