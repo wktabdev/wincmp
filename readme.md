@@ -73,10 +73,9 @@ wincmp/
 │   ├── resource/            # Resource monitoring (CPU/RAM/Subprocess stack)
 │   ├── crypto/              # MariaDB password encryption
 │   └── singleinstance/      # Single instance lock + window focus helper
-├── frontend/                # Frontend React + TSX project
-│   ├── src/                 # Frontend source files (Dashboard, Projects, etc.)
-│   └── tailwind.config.js   # Tailwind style configurations
-└── legacy_fyne/             # Archived legacy Fyne code (for reference only)
+└── frontend/                # Frontend React + TSX project
+    ├── src/                 # Frontend source files (Dashboard, Projects, etc.)
+    └── tailwind.config.js   # Tailwind style configurations
 ```
 
 ---

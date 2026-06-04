@@ -67,10 +67,9 @@ wincmp/
 │   ├── resource/            # 資源監控 (CPU/RAM/Stack)
 │   ├── crypto/              # MariaDB 密碼加密
 │   └── singleinstance/      # 單實例鎖 + 視窗帶到前景
-├── frontend/                # 前端 React + TSX 專案
-│   ├── src/                 # 前端源碼 (Dashboard, Projects, DBExplorer 等)
-│   └── tailwind.config.js   # Tailwind 樣式變數設定
-└── legacy_fyne/             # 已歸檔的舊 Go Fyne 程式碼 (僅供功能移植參考)
+└── frontend/                # 前端 React + TSX 專案
+    ├── src/                 # 前端源碼 (Dashboard, Projects, DBExplorer 等)
+    └── tailwind.config.js   # Tailwind 樣式變數設定
 ```
 
 ---

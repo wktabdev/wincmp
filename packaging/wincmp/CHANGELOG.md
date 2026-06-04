@@ -1,6 +1,6 @@
 # Changelog
 
-## [3.0.0] 2026-06-03
+## [2.0.0] 2026-06-03
 
 ### Added
 - **Full GUI Core Refactoring**: Ported the desktop application framework from Go Fyne to **Wails v2** + **React 18** + **TypeScript**.
