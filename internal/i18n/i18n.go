@@ -190,6 +190,7 @@ var enTranslations = map[string]string{
 
 	// Startup & Scanner Logs
 	"正在初始化 WinCMP...":                "Initializing WinCMP...",
+	"WinCMP 控制面板正在啟動...":          "WinCMP Control Panel is starting...",
 	"專案根目錄: %s":                      "Project root: %s",
 	"掃描 ./bin 目錄中的服務版本...":           "Scanning ./bin directory for service versions...",
 	"掃描服務版本失敗":                       "Failed to scan service versions",

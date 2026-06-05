@@ -6,7 +6,7 @@ import DBExplorer from './components/DBExplorer';
 import Settings from './components/Settings';
 import ResourceMonitor from './components/ResourceMonitor';
 import TerminalLogs from './components/TerminalLogs';
-import { EventsOn, EventsOff } from '../wailsjs/runtime/runtime';
+import { EventsOn } from '../wailsjs/runtime/runtime';
 import { GetAppVersion, IsAdmin, GetConfig } from '../wailsjs/go/main/App';
 import logo from './assets/images/icon.svg';
 import { t, setLanguage, useLanguage } from './i18n';
@@ -131,10 +131,10 @@ export default function App() {
       }
     };
  
-    EventsOn('resource_usage', handleResourceUpdate);
+    const unsubscribe = EventsOn('resource_usage', handleResourceUpdate);
  
     return () => {
-      EventsOff('resource_usage');
+      unsubscribe();
     };
   }, []);
  

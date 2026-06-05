@@ -92,17 +92,22 @@ wincmp/
   ```
 * **前端 React 接收範例**：
   ```tsx
-  import { EventsOn, EventsOff } from '../wailsjs/runtime/runtime';
+  import { EventsOn } from '../wailsjs/runtime/runtime';
 
   useEffect(() => {
-    EventsOn("resource_usage", (data) => {
+    // EventsOn 會回傳一個用於註銷該次監聽的函數 (unsubscribe)
+    const unsubscribe = EventsOn("resource_usage", (data) => {
       console.log("CPU:", data.cpu, "RAM:", data.memory);
     });
     return () => {
-      EventsOff("resource_usage");
+      unsubscribe(); // 僅註銷此實例，絕不影響全域其他同名監聽器
     };
   }, []);
   ```
+* **⚠️ 致命 Bug 防範：全面禁用全域 `EventsOff(eventName)`**
+  * 在 Wails v2 中，直接調用 `EventsOff("事件名")` 會**註銷該事件名下登記的所有全域監聽器**。
+  * 若在 React 組件卸載（Unmount）或切換語言重載組件時使用 `EventsOff`，會把其他組件中（如全域 `logStore`）的同名事件監聽徹底註銷，造成日誌與監控功能永久失效。
+  * **規範**：前端組件清理時，**必須**使用 `EventsOn` 呼叫所回傳的 `unsubscribe` 註銷函數，嚴禁直接使用 `EventsOff`。
 
 ### 3.3 程式碼風格與命名慣例
 * **後端 Go**：

@@ -205,6 +205,20 @@ export namespace config {
 
 export namespace main {
 	
+	export class LogEntry {
+	    text: string;
+	    time: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new LogEntry(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.text = source["text"];
+	        this.time = source["time"];
+	    }
+	}
 	export class ProjectDetectResult {
 	    name: string;
 	    domains: string[];

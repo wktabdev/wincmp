@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Trash2, ArrowDown } from 'lucide-react';
-import { EventsOn, EventsOff } from '../../wailsjs/runtime/runtime';
+import { EventsOn } from '../../wailsjs/runtime/runtime';
 import { logStore, LogData, LogLine } from './logStore';
 import { t, useLanguage } from '../i18n';
 
@@ -73,10 +73,10 @@ export default function TerminalLogs() {
       }
     };
 
-    EventsOn('log', handleAutoSwitch);
+    const unsubscribe = EventsOn('log', handleAutoSwitch);
 
     return () => {
-      EventsOff('log');
+      unsubscribe();
       if (debounceTimerRef.current) {
         clearTimeout(debounceTimerRef.current);
       }

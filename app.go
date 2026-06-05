@@ -109,6 +109,14 @@ func (a *App) startup(ctx context.Context) {
 	// 自動清理過期日誌檔案
 	go a.cleanExpiredLogs()
 
+	a.handleLog("system", i18n.T("WinCMP 控制面板正在啟動..."))
+	a.handleLog("system", i18n.Tfmt("專案根目錄: %s", a.baseDir))
+	if err != nil {
+		a.handleErrorLog("system", i18n.T("無法載入設定檔"), err)
+	} else {
+		a.handleLog("system", i18n.Tfmt("  ✓ 設定檔已載入 (%d 個專案)", len(a.appCfg.Projects)))
+	}
+
 	// 4. 定義並連接日誌推送函式到進程管理器
 	logFn := func(category string, msg string) {
 		a.handleLog(category, msg)
@@ -127,11 +135,65 @@ func (a *App) startup(ctx context.Context) {
 	// 5.6 初始化終端管理器
 	a.termMgr = terminal.NewManager()
 
+	a.handleLog("system", i18n.T("掃描 ./bin 目錄中的服務版本..."))
+
 	// 6. 掃描已安裝的服務版本
 	a.scanRes, err = scanner.ScanBinDir(a.baseDir)
 	if err != nil {
 		a.handleErrorLog("system", i18n.T("掃描服務版本失敗"), err)
 	} else {
+		if len(a.scanRes.CaddyList) > 0 {
+			a.handleLog("system", i18n.Tfmt("  ✓ 找到 Caddy 版本: [%s]", a.scanRes.CaddyList[0].Version))
+		} else {
+			a.handleLog("system", i18n.T("  ✗ 未找到 Caddy"))
+		}
+		if len(a.scanRes.MariaDBList) > 0 {
+			a.handleLog("system", i18n.Tfmt("  ✓ 找到 MariaDB 版本: [%s]", a.scanRes.MariaDBList[0].Version))
+		} else {
+			a.handleLog("system", i18n.T("  ✗ 未找到 MariaDB"))
+		}
+		if len(a.scanRes.MailpitList) > 0 {
+			a.handleLog("system", i18n.Tfmt("  ✓ 找到 Mailpit 版本: [%s]", a.scanRes.MailpitList[0].Version))
+		} else {
+			a.handleLog("system", i18n.T("  ✗ 未找到 Mailpit"))
+		}
+		if len(a.scanRes.PHPList) > 0 {
+			var phpVers []string
+			for _, php := range a.scanRes.PHPList {
+				phpVers = append(phpVers, php.Version)
+			}
+			a.handleLog("system", i18n.Tfmt("  ✓ 找到 PHP 版本: [%s]", strings.Join(phpVers, ", ")))
+		} else {
+			a.handleLog("system", i18n.T("  ✗ 未找到 PHP"))
+		}
+		if len(a.scanRes.NodeList) > 0 {
+			var nodeVers []string
+			for _, n := range a.scanRes.NodeList {
+				nodeVers = append(nodeVers, n.Version)
+			}
+			a.handleLog("system", i18n.Tfmt("  ✓ 找到 Node 版本: [%s]", strings.Join(nodeVers, ", ")))
+		} else {
+			a.handleLog("system", i18n.T("  ✗ 未找到 Node"))
+		}
+		if len(a.scanRes.BunList) > 0 {
+			var bunVers []string
+			for _, b := range a.scanRes.BunList {
+				bunVers = append(bunVers, b.Version)
+			}
+			a.handleLog("system", i18n.Tfmt("  ✓ 找到 Bun 版本: [%s]", strings.Join(bunVers, ", ")))
+		}
+
+		if len(a.scanRes.ComposerList) > 0 {
+			a.handleLog("system", i18n.Tfmt("  ✓ 找到 Composer 版本: [%s]", a.scanRes.ComposerList[0].Version))
+		} else {
+			a.handleLog("system", i18n.T("  ✗ 未找到 Composer"))
+		}
+		if len(a.scanRes.HeidiSQLList) > 0 {
+			a.handleLog("system", i18n.Tfmt("  ✓ 找到 HeidiSQL 版本: [%s]", a.scanRes.HeidiSQLList[0].Version))
+		} else {
+			a.handleLog("system", i18n.T("  ✗ 未找到 HeidiSQL"))
+		}
+
 		a.handleLog("system", i18n.T("掃描 bin/ 目錄完成"))
 	}
 

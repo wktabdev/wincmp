@@ -11,7 +11,7 @@ import {
   ScanServices,
   GetScanResult
 } from '../../wailsjs/go/main/App';
-import { EventsOn, EventsOff } from '../../wailsjs/runtime/runtime';
+import { EventsOn } from '../../wailsjs/runtime/runtime';
 import { t, useLanguage } from '../i18n';
 
 interface DependencyItem {
@@ -75,10 +75,10 @@ export default function DependencyManager({ isOpen, onClose, onInstalled }: Depe
       }
     };
 
-    EventsOn('dependency_progress', handleProgress);
+    const unsubscribe = EventsOn('dependency_progress', handleProgress);
 
     return () => {
-      EventsOff('dependency_progress');
+      unsubscribe();
     };
   }, [onInstalled]);
 

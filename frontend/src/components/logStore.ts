@@ -1,5 +1,5 @@
 import { EventsOn } from '../../wailsjs/runtime/runtime';
-import { GetConfig } from '../../wailsjs/go/main/App';
+import { GetConfig, GetCategoryLogs } from '../../wailsjs/go/main/App';
 
 export interface LogLine {
   text: string;
@@ -49,6 +49,67 @@ class LogStore {
     }
   }
 
+  private async loadHistoryLogs() {
+    try {
+      const categories = ['system', 'caddy', 'mariadb', 'mailpit', 'php'];
+      
+      // 1. 載入系統分類歷史日誌
+      for (const cat of categories) {
+        const entries = await GetCategoryLogs(cat, "");
+        if (entries && entries.length > 0) {
+          const existing = this.logs[cat as keyof Omit<LogData, 'runtime'>] || [];
+          const combined = [...entries.map((e: any) => ({ text: e.text || '', time: e.time || '' }))];
+          for (const item of existing) {
+            const isDup = combined.some(c => c.time === item.time && c.text === item.text);
+            if (!isDup) {
+              combined.push(item);
+            }
+          }
+          this.logs[cat as keyof Omit<LogData, 'runtime'>] = combined;
+        }
+      }
+
+      // 2. 載入 runtime 分類歷史日誌 (System 和各專案)
+      const systemRuntimeEntries = await GetCategoryLogs("runtime", "System");
+      if (systemRuntimeEntries && systemRuntimeEntries.length > 0) {
+        const existing = this.logs.runtime["System"] || [];
+        const combined = [...systemRuntimeEntries.map((e: any) => ({ text: e.text || '', time: e.time || '' }))];
+        for (const item of existing) {
+          const isDup = combined.some(c => c.time === item.time && c.text === item.text);
+          if (!isDup) {
+            combined.push(item);
+          }
+        }
+        this.logs.runtime["System"] = combined;
+      }
+
+      const cfg = await GetConfig();
+      if (cfg && cfg.projects) {
+        for (const proj of cfg.projects) {
+          if (proj.name) {
+            const entries = await GetCategoryLogs("runtime", proj.name);
+            if (entries && entries.length > 0) {
+              const existing = this.logs.runtime[proj.name] || [];
+              const combined = [...entries.map((e: any) => ({ text: e.text || '', time: e.time || '' }))];
+              for (const item of existing) {
+                const isDup = combined.some(c => c.time === item.time && c.text === item.text);
+                if (!isDup) {
+                  combined.push(item);
+                }
+              }
+              this.logs.runtime[proj.name] = combined;
+            }
+          }
+        }
+      }
+
+      this.applyMaxLogLines();
+      this.notify();
+    } catch (err) {
+      console.error('[logStore] 載入歷史日誌失敗:', err);
+    }
+  }
+
   public setMaxLogLines(lines: number) {
     if (lines > 0 && lines !== this.maxLogLines) {
       this.maxLogLines = lines;
@@ -90,6 +151,9 @@ class LogStore {
     
     // 異步載入最大保留行數設定
     this.loadMaxLogLines();
+
+    // 異步載入歷史日誌並去重合併
+    this.loadHistoryLogs();
 
     EventsOn('log', (data: any) => {
       console.log('[logStore] Received log payload:', data);

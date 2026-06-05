@@ -17,6 +17,8 @@ export function FetchRemoteDependencies():Promise<config.DependencyConfig>;
 
 export function GetAppVersion():Promise<string>;
 
+export function GetCategoryLogs(arg1:string,arg2:string):Promise<Array<main.LogEntry>>;
+
 export function GetConfig():Promise<config.WincmpConfig>;
 
 export function GetDependencyConfig():Promise<config.DependencyConfig>;

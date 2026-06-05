@@ -26,6 +26,10 @@ export function GetAppVersion() {
   return window['go']['main']['App']['GetAppVersion']();
 }
 
+export function GetCategoryLogs(arg1, arg2) {
+  return window['go']['main']['App']['GetCategoryLogs'](arg1, arg2);
+}
+
 export function GetConfig() {
   return window['go']['main']['App']['GetConfig']();
 }

@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { X, RefreshCw, Terminal as TermIcon, ShieldAlert } from 'lucide-react';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
-import { EventsOn, EventsOff } from '../../wailsjs/runtime/runtime';
+import { EventsOn } from '../../wailsjs/runtime/runtime';
 import {
   StartTerminalSession,
   SendTerminalInput,
@@ -36,6 +36,9 @@ export default function ProjectTerminal({ projectName, isOpen, onClose }: Projec
 
     setErrorMsg(null);
     setIsReady(false);
+
+    let unsubOutput: (() => void) | null = null;
+    let unsubExit: (() => void) | null = null;
 
     // 1. 初始化 xterm.js
     const term = new Terminal({
@@ -100,14 +103,14 @@ export default function ProjectTerminal({ projectName, isOpen, onClose }: Projec
         });
 
         // 6. 監聽後端輸出事件
-        EventsOn('terminal_output', (res: { sessionId: string; data: string }) => {
+        unsubOutput = EventsOn('terminal_output', (res: { sessionId: string; data: string }) => {
           if (res.sessionId === sID) {
             term.write(res.data);
           }
         });
 
         // 7. 監聽後端進程關閉事件
-        EventsOn('terminal_exit', (res: { sessionId: string }) => {
+        unsubExit = EventsOn('terminal_exit', (res: { sessionId: string }) => {
           if (res.sessionId === sID) {
             term.writeln('\r\n\x1b[38;5;203m🚫 [WinCMP] ' + t("終端會話已中斷或關閉") + '\x1b[0m\r\n');
           }
@@ -141,8 +144,8 @@ export default function ProjectTerminal({ projectName, isOpen, onClose }: Projec
     // 清理資源
     return () => {
       // 關閉監聽器
-      EventsOff('terminal_output');
-      EventsOff('terminal_exit');
+      if (unsubOutput) unsubOutput();
+      if (unsubExit) unsubExit();
 
       // 銷毀 Observer
       if (containerResizeObserver.current) {

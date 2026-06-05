@@ -1260,4 +1260,77 @@ func (a *App) OpenProjectCaddyfile(projectName string) error {
 	return cmd.Start()
 }
 
+// LogEntry 描述一筆日誌記錄
+type LogEntry struct {
+	Text string `json:"text"`
+	Time string `json:"time"`
+}
+
+// GetCategoryLogs 獲取指定分類的當天日誌歷史紀錄
+// 支援 system, caddy, mariadb, mailpit, php, runtime 等分類
+func (a *App) GetCategoryLogs(category string, subCategory string) ([]LogEntry, error) {
+	catKey := strings.ToLower(category)
+	var fileName string
+	dateStr := time.Now().Format("2006-01-02")
+	logDir := filepath.Join(a.baseDir, "logs")
+
+	if catKey == "runtime" {
+		projName := subCategory
+		if projName == "" {
+			projName = "System"
+		}
+		fileName = fmt.Sprintf("runtime-%s-%s.log", projName, dateStr)
+	} else {
+		fileName = fmt.Sprintf("wincmp-%s-%s.log", catKey, dateStr)
+	}
+
+	filePath := filepath.Join(logDir, fileName)
+	if _, err := os.Stat(filePath); os.IsNotExist(err) {
+		return []LogEntry{}, nil
+	}
+
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		return nil, fmt.Errorf("讀取日誌檔失敗: %w", err)
+	}
+
+	lines := strings.Split(string(data), "\n")
+	var entries []LogEntry
+
+	for _, line := range lines {
+		line = strings.TrimRight(line, "\r")
+		if line == "" {
+			continue
+		}
+
+		// 解析格式例如: [15:04:05] 日誌內容
+		if len(line) >= 11 && line[0] == '[' && line[9] == ']' {
+			timeStr := line[1:9]
+			textStr := line[11:]
+			entries = append(entries, LogEntry{
+				Time: timeStr,
+				Text: textStr,
+			})
+		} else {
+			// 兜底，萬一沒有時間戳記，使用當前時間作為時間戳記
+			entries = append(entries, LogEntry{
+				Time: time.Now().Format("15:04:05"),
+				Text: line,
+			})
+		}
+	}
+
+	// 限制最多回傳行數（根據設定檔中的 max_log_lines）
+	limit := 500
+	if a.appCfg != nil && a.appCfg.Global.MaxLogLines > 0 {
+		limit = a.appCfg.Global.MaxLogLines
+	}
+	if len(entries) > limit {
+		entries = entries[len(entries)-limit:]
+	}
+
+	return entries, nil
+}
+
+
 
