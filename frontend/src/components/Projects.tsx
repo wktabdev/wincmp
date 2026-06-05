@@ -249,7 +249,7 @@ export default function Projects({ highlightedProjectName, clearHighlight }: { h
           ...editingProject,
           root_path: path,
           name: res.name,
-          domains: res.domains && res.domains.length > 0 ? res.domains : [`local-${res.name.toLowerCase()}.test`],
+          domains: res.domains && res.domains.length > 0 ? res.domains : [`local-${res.name.toLowerCase().replace(/_/g, '-')}.test`],
           type: res.type || 'static',
           runtime_type: res.runtime_type || 'none',
           runtime_port: res.runtime_port || 3000,
@@ -284,8 +284,17 @@ export default function Projects({ highlightedProjectName, clearHighlight }: { h
 
   const handleSaveProject = async () => {
     if (!editingProject || !config) return;
-    if (!editingProject.name.trim()) {
+    
+    const trimName = editingProject.name.trim();
+    if (!trimName) {
       (window as any).customAlert(t("專案名稱不能為空"));
+      return;
+    }
+
+    // 專案名稱格式驗證 (只允許英數字、連字號與底線)
+    const nameRegex = /^[a-zA-Z0-9_-]+$/;
+    if (!nameRegex.test(trimName)) {
+      (window as any).customAlert(t("專案名稱僅能包含英數字、連字號(-)與底線(_)喔！"));
       return;
     }
 
@@ -296,11 +305,21 @@ export default function Projects({ highlightedProjectName, clearHighlight }: { h
 
     const newCfg = { ...config };
     const cleanProj = { ...editingProject };
+    cleanProj.name = trimName;
 
     // 清理 domains 空白
     cleanProj.domains = cleanProj.domains.filter(d => d.trim() !== "");
     if (cleanProj.domains.length === 0) {
-      cleanProj.domains = [`local-${cleanProj.name.toLowerCase()}.test`];
+      cleanProj.domains = [`local-${cleanProj.name.toLowerCase().replace(/_/g, '-')}.test`];
+    }
+
+    // 網域格式驗證 (比照後端 hosts.IsValidDomain 規則)
+    const domainRegex = /^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)*$/;
+    for (const d of cleanProj.domains) {
+      if (!domainRegex.test(d)) {
+        (window as any).customAlert(t("網域 '%s' 格式不正確喔！請輸入正確的網域格式（例如 my-site.test），且不能包含底線、埠號或路徑。", d));
+        return;
+      }
     }
 
     // 重名檢測
@@ -634,6 +653,9 @@ export default function Projects({ highlightedProjectName, clearHighlight }: { h
                         placeholder={t("例如: my-laravel-app")}
                         className="w-full bg-darkInput border border-darkBorder text-gray-100 rounded-lg px-3 py-2 outline-none focus:border-blue-500 disabled:opacity-50 transition"
                       />
+                      <div className="text-[10px] text-gray-500 italic mt-0.5">
+                        * {t("名稱不可重複，僅限英數字、連字號(-)與底線(_)")}
+                      </div>
                     </div>
                   )}
                 </div>
@@ -821,6 +843,9 @@ export default function Projects({ highlightedProjectName, clearHighlight }: { h
                         >
                           {t("+ 新增別名網域")}
                         </button>
+                        <div className="text-[10px] text-gray-500 italic mt-0.5">
+                          * {t("不可包含底線(_)、埠號(:)或路徑(/)，僅限英數字、連字號(-)與點(.)")}
+                        </div>
                       </div>
                     </div>
 

@@ -96,6 +96,27 @@ func (a *App) SaveConfig(newCfg *config.WincmpConfig) error {
 		return fmt.Errorf("%s", i18n.T("設定檔為空，無法儲存"))
 	}
 
+	// 後端安全驗證：檢查專案名稱與網域格式是否合規
+	projectNamePattern := regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
+	for _, proj := range newCfg.Projects {
+		name := strings.TrimSpace(proj.Name)
+		if name == "" {
+			return fmt.Errorf("%s", i18n.T("專案名稱不能為空"))
+		}
+		if !projectNamePattern.MatchString(name) {
+			return fmt.Errorf("%s", i18n.Tfmt("專案名稱 '%s' 格式不正確。僅能包含英數字、連字號(-)與底線(_)。", name))
+		}
+		for _, dom := range proj.Domains {
+			domTrimmed := strings.TrimSpace(dom)
+			if domTrimmed == "" {
+				continue
+			}
+			if !hosts.IsValidDomain(domTrimmed) {
+				return fmt.Errorf("%s", i18n.Tfmt("網域 '%s' 格式不正確。僅能包含英數字、連字號(-)與點(.)，且不能包含底線、埠號或路徑。", domTrimmed))
+			}
+		}
+	}
+
 	a.appCfg = newCfg
 	cfgPath := filepath.Join(a.baseDir, "conf", "wincmp.json")
 	
