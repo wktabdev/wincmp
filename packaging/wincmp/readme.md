@@ -6,200 +6,199 @@
 ![Platform](https://img.shields.io/badge/Platform-Windows_11-0078D6?style=for-the-badge&logo=windows)
 ![License](https://img.shields.io/badge/License-MIT-green.svg?style=for-the-badge)
 
-**WinCMP** 是一個專為 Windows 設計的現代化、可攜式本機開發環境控制面板。
-名稱取自 **Win**dows + **C**addy + **M**ariaDB + **P**HP。
+**WinCMP** is a modern, portable local development environment control panel designed specifically for Windows.
+The name stands for **Win**dows + **C**addy + **M**ariaDB + **P**HP.
 
-受到 XAMPP 和 Laragon 的啟發，WinCMP 提供一個更輕量、**免安裝 (Portable)**、且 **不需要管理員權限** 的開發環境解決方案。基於 Go 語言核心與 Wails v2 框架打造，前端使用 React 18 技術棧，具備極佳的視覺美感、極低的資源佔用與極快的啟動速度。
-
----
-
-## ✨ 核心特色
-
-- 🪶 **極致輕量**：採用 Go 核心編譯，使用系統自帶的 Web 渲染引擎 (WebView2)，無須 Electron 依賴，啟動快速，資源佔用低。
-- 🛡️ **免管理員權限**：無需系統管理員權限即可運行，不修改系統環境變數，不寫入登錄檔。*（註：自動修改 Windows `hosts` 檔為選用功能，啟用時需要 UAC 權限）*
-- 🎨 **現代化 UI/UX**：內建深色/淺色模式，直覺的圖形化界面，即時監控服務狀態。
-- 🔄 **PHP 多版本支援**：同時管理多個 PHP 版本，自動負載均衡提升效能。
-- 🚀 **Runtime 多環境運行**：支援 Node.js、Bun、Python、Go (Air/Run)、Custom 等多種開發環境。
-- 📂 **專案管理**：可視化管理 Laravel、Next.js、Nuxt、Astro、Vite、Python、Go 等專案，自動偵測框架並生成配置。
-- 📜 **完全可攜**：整個環境集中在一個資料夾，可隨身攜帶，隨插即用。
+Inspired by XAMPP and Laragon, WinCMP provides a lightweight, **portable (installation-free)**, and **no-administrator-privileges-required** local development solution. Built with a Go core and the Wails v2 framework, the frontend uses React 18 to deliver an elegant UI, low resource footprint, and lightning-fast startup speed.
 
 ---
 
-## 📥 快速開始
+## ✨ Key Features
 
-### 系統需求
+- 🪶 **Extremely Lightweight**: Compiled with a Go core using the native Web rendering engine (WebView2). Zero Electron dependencies, fast startup, and minimal resource usage.
+- 🛡️ **No Admin Privileges Needed**: Runs without system administrator privileges, does not modify system environment variables, and does not write to the registry. *(Note: Automatic host file updates require UAC elevation if enabled).*
+- 🎨 **Modern UI/UX**: Built-in dark and light modes with an intuitive graphical interface for real-time service status monitoring.
+- 🔄 **PHP Multi-Version Support**: Manage multiple PHP versions simultaneously, with automatic load balancing for improved performance.
+- 🚀 **Runtime Multi-Environment Support**: Support for Node.js, Bun, Python, Go (Air/Run), and Custom runtimes.
+- 📂 **Project Management**: Visually manage Laravel, Next.js, Nuxt, Astro, Vite, Python, Go, and other projects, featuring automatic framework detection and Caddyfile generation.
+- 📜 **Fully Portable**: The entire environment is self-contained in a single folder, ready to be run from a USB drive.
 
-- **作業系統**：Windows 10 / Windows 11（64位元）
-- **硬碟空間**：至少 500 MB 可用空間
-- **記憶體**：建議 4 GB 以上
+---
 
-### 安裝步驟
+## 📥 Quick Start
 
-1. **下載 WinCMP**
-   - 從 Releases 頁面下載最新版本的 `wincmp.zip`（Light 版，僅包含本體程式）。
-   - 解壓縮至您想要的位置（例如：`D:\wincmp`）。
+### System Requirements
 
-2. **啟動 WinCMP 與依賴偵測**
-   - 雙擊 `wincmp.exe` 啟動程式。
-   - **依賴偵測提示**：啟動時，WinCMP 會自動掃描 `bin/` 目錄。如果缺少運行所需的核心元件（Caddy、PHP、MariaDB 等），程式會彈出**「依賴元件缺失提示」**。
-   - 您可以直接在提示視窗中點擊**「自動下載與安裝」**，WinCMP 會自動從官方託管地址下載推薦的版本並配置好目錄；您也可以選擇手動準備元件。
+- **OS**: Windows 10 / Windows 11 (64-bit)
+- **Disk Space**: At least 500 MB available space
+- **RAM**: 4 GB or more recommended
 
-3. **手動放置二進制檔案（備用 / 自訂版本）**
-   如果您想使用自訂的版本，可以手動下載對應元件並解壓縮放置於以下目錄結構：
+### Installation Steps
+
+1. **Download WinCMP**
+   - Download the latest `wincmp.zip` (Light version, contains the app binary only) from the Releases page.
+   - Extract it to your desired location (e.g., `D:\wincmp`).
+
+2. **Launch & Dependency Detection**
+   - Double-click `wincmp.exe` to run the application.
+   - **Dependency Missing Prompt**: Upon startup, WinCMP scans the `bin/` directory. If any critical dependencies (Caddy, PHP, MariaDB, etc.) are missing, a prompt will appear.
+   - You can click **"Auto Download (Recommended)"** to automatically download and configure the recommended versions from official mirrors, or configure them manually.
+
+3. **Manual Setup (Optional / Custom Versions)**
+   If you wish to use your own binary versions, download them and place them in the following directory layout:
    ```
    wincmp/
    ├── bin/
-   │   ├── caddy/          # Caddy 執行檔 (放置 caddy.exe)
-   │   ├── mariadb/        # MariaDB 執行檔 (放置 mariadbd.exe 所在目錄)
-   │   ├── php/            # PHP 執行檔（可放多個版本，如 php-8.3.28-nts-Win32...）
+   │   ├── caddy/          # Caddy binary (place caddy.exe here)
+   │   ├── mariadb/        # MariaDB binaries (place mariadbd.exe directory here)
+   │   ├── php/            # PHP runtimes (supports multiple versions, e.g., php-8.3.28-nts-Win32...)
    │   │   ├── php-8.2/
    │   │   └── php-8.3/
-   │   ├── node/           # Node.js 執行檔（可選）
-   │   ├── bun/            # Bun 執行檔（可選）
-   │   ├── composer/       # Composer 執行檔（可選）
-   │   ├── heidisql/       # HeidiSQL 執行檔（可選）
-   │   └── mailpit/        # Mailpit 執行檔（可選）
+   │   ├── node/           # Node.js binary (optional)
+   │   ├── bun/            # Bun binary (optional)
+   │   ├── composer/       # Composer binary (optional)
+   │   ├── heidisql/       # HeidiSQL binary (optional)
+   │   └── mailpit/        # Mailpit binary (optional)
    ```
-
 
 ---
 
-## 📁 目錄結構說明
+## 📁 Directory Structure
 
 ```text
 wincmp/
-├── wincmp.exe               # 主程式
-├── conf/                    # 配置文件
-│   ├── ssl/                 # SSL 憑證
-│   ├── snippets/            # Caddy 共用配置
-│   ├── sites/               # 專案網站配置
-│   ├── wincmp.json          # 程式設定檔
-│   ├── Caddyfile            # Caddy 主配置
-│   └── my.ini               # MariaDB 設定
-├── bin/                     # 服務執行檔
+├── wincmp.exe               # Main Executable
+├── conf/                    # Configurations
+│   ├── ssl/                 # SSL Certificates
+│   ├── snippets/            # Shared Caddy snippets
+│   ├── sites/               # Project Caddy files
+│   ├── wincmp.json          # Main settings JSON
+│   ├── Caddyfile            # Master Caddyfile
+│   └── my.ini               # MariaDB Configuration
+├── bin/                     # Service Binaries
 │   ├── caddy/
 │   ├── mariadb/
 │   ├── php/
-│   ├── node/                # Node.js（可選）
-│   ├── bun/                 # Bun（可選）
-│   ├── composer/            # Composer（可選）
-│   ├── heidisql/            # HeidiSQL（可選）
-│   └── mailpit/             # Mailpit（可選）
-├── data/                    # 資料庫檔案
+│   ├── node/                # Node.js (optional)
+│   ├── bun/                 # Bun (optional)
+│   ├── composer/            # Composer (optional)
+│   ├── heidisql/            # HeidiSQL (optional)
+│   └── mailpit/             # Mailpit (optional)
+├── data/                    # Database Data Files
 │   └── mariadb/
-├── logs/                    # 執行日誌
-└── www/                     # 預設網站根目錄
+├── logs/                    # Process Logs
+└── www/                     # Default Web Root Directory
 ```
 
-**注意**：請勿刪除 `conf/`、`data/`、`logs/` 目錄，這些目錄存放著您的設定與資料。
+**Note**: Do not delete `conf/`, `data/`, and `logs/` directories as they store your settings and database data.
 
 ---
 
-## 🚀 使用指南
+## 🚀 Usage Guide
 
-### 啟動服務
+### Starting Services
 
-1. 開啟 WinCMP 主程式
-2. 在主介面選擇要啟動的服務：
-   - **Caddy**：Web 伺服器（預設端口：80/443）
-   - **MariaDB**：資料庫伺服器（預設端口：3306）
-   - **PHP**：選擇要啟動的 PHP 版本
-   - **Mailpit**：郵件測試服務（預設端口：8025/1025，可選）
-3. 點擊「啟動」按鈕，服務狀態會即時更新
+1. Open the WinCMP application.
+2. Select the services you want to start on the Dashboard:
+   - **Caddy**: Web Server (Default ports: 80/443)
+   - **MariaDB**: Database Server (Default port: 3306)
+   - **PHP**: Choose the version to run
+   - **Mailpit**: SMTP testing server (Default ports: 8025/1025, optional)
+3. Click "Start" to run the services. Statuses will update in real time.
 
-### 建立新專案
+### Creating a New Project
 
-1. 在 WinCMP 主介面點擊「新增專案」
-2. 設定專案名稱與根目錄路徑
-3. 選擇專案類型（Laravel、Next.js、Nuxt、Astro、Vite、Python、Go API、PocketBase、Custom 等）
-4. 設定網域名稱（可選，預設為 `local-{專案名}.test`）
-5. 點擊「建立」，WinCMP 會自動偵測框架並生成配置
+1. Click "Add Project" in the WinCMP panel.
+2. Set the Project Name and Root Path.
+3. Select the Project Type (Laravel, Next.js, Nuxt, Astro, Vite, Python, Go API, PocketBase, Custom, etc.).
+4. Set the domain name (optional, defaults to `local-{project-name}.test`).
+5. Click "Create". WinCMP will automatically detect the framework and generate configurations.
 
-### 存取您的網站
+### Accessing Your Site
 
-- **本機存取**：`http://localhost`
-- **指定專案**：根據您設定的域名存取
-- **資料庫管理**：可透過 phpMyAdmin 或其他 MySQL 管理工具連線
+- **Local Access**: `http://localhost`
+- **Domain Access**: Access using the custom domain configured for the project.
+- **Database Management**: Connect using HeidiSQL (bundled or external) or other MySQL clients.
 
-### 系統匣功能
+### System Tray Features
 
-- 點擊右上角「最小化」可將程式縮小至系統匣
-- 在系統匣圖示上按右鍵可快速啟動/停止服務
-- 服務運行時間會顯示在介面上
+- Minimize to Tray: Closes the window to the system tray (configurable in settings).
+- Right-click the system tray icon to quickly start or stop all services.
+- Service uptimes are displayed on the Dashboard.
 
 ---
 
-## ⚙️ 進階設定
+## ⚙️ Advanced Settings
 
-### 修改端口號
+### Modifying Ports
 
-若預設端口被佔用，可於 `conf/wincmp.json` 中修改：
-- Caddy HTTP 端口：預設 80
-- Caddy HTTPS 端口：預設 443
-- MariaDB 端口：預設 3306
+If default ports are occupied, you can modify them in `conf/wincmp.json` or through Settings:
+- Caddy HTTP Port: Default 80
+- Caddy HTTPS Port: Default 443
+- MariaDB Port: Default 3306
 
-### PHP 多版本配置
+### PHP Multi-Version Configuration
 
-將不同版本的 PHP 放置於 `bin/php/` 下的獨立資料夾：
+Place different versions of PHP in separate subfolders under `bin/php/`:
 ```
 bin/php/
 ├── php-8.2.30/
 ├── php-8.3.28/
 ```
-WinCMP 會自動識別所有可用的 PHP 版本，並僅保留每個 Minor 版本的最新 Patch 版本。
+WinCMP automatically scans all available PHP versions and displays only the latest patch version for each minor version.
 
-### Runtime 開發環境
+### Runtime Environments
 
-WinCMP 的 Runtime Tab 支援多種開發環境：
-- **Node.js / Bun**：放置於 `bin/node/` 或 `bin/bun/` 即可自動掃描
-- **Python / Go**：使用系統 PATH 中的安裝，啟動時自動偵測版本
-- **Custom**：自訂啟動指令，支援 `%PORT%`、`%HOST%`、`%PROJECT_DIR%`、`%BIN_DIR%` 佔位符
+The Runtime Tab supports running custom script setups:
+- **Node.js / Bun**: Drop them into `bin/node/` or `bin/bun/` to let WinCMP scan them automatically.
+- **Python / Go**: Uses system PATH installations and automatically detects the environment.
+- **Custom**: Define your own command-line script. Supports `%PORT%`, `%HOST%`, `%PROJECT_DIR%`, and `%BIN_DIR%` placeholders.
 
-Runtime 支援 **Background**（背景執行，輸出至 Runtime Logs）和 **Terminal**（開啟獨立 CMD 視窗）兩種模式。
+Runtimes support both **Background** (non-interactive, outputs to logs console) and **Terminal** (spawns an interactive cmd window) execution modes.
 
-### SSL 憑證
+### SSL Certificates
 
-預設使用 Caddy 自動產生的本地憑證。如需使用自訂憑證，請將檔案放置於 `conf/ssl/` 目錄。
-
----
-
-## 🛠️ 常見問題
-
-**Q: 啟動時顯示「找不到服務執行檔」？**  
-A: 請確認已將 Caddy、MariaDB、PHP 放置於正確的 `bin/` 子目錄中。
-
-**Q: 端口被佔用怎麼辦？**  
-A: 在設定中修改端口號，或關閉佔用端口的其他程式（如其他 XAMPP/WAMP）。
-
-**Q: 資料庫連線失敗？**  
-A: 確認 MariaDB 服務已啟動，並檢查 `conf/my.ini` 中的配置。如使用外部 MariaDB/MySQL，請在 Settings 中啟用外部資料庫選項。
-
-**Q: Runtime 啟動失敗？**
-A: 若使用 Python/Go 類型，請確認已安裝至系統 PATH（`python -V`、`go version` 可執行）。若使用 Node.js/Bun 類型，請確認 `bin/node/` 或 `bin/bun/` 目錄中有對應的執行檔。
-
-**Q: 如何備份資料庫？**  
-A: `data/mariadb/` 目錄即為資料庫檔案所在，直接複製該目錄即可備份。
-
-**Q: 可以攜帶到不同電腦使用嗎？**  
-A: 可以！WinCMP 是完全可攜式的，只要複製整個資料夾到新電腦即可。
+By default, WinCMP uses Caddy's auto-generated local CA certificates. To use your own, place them in the `conf/ssl/` directory.
 
 ---
 
-## 📄 授權條款
+## 🛠️ FAQ
 
-本項目基於 [MIT License](LICENSE) 授權。
+**Q: "Executable not found" error during startup?**  
+A: Ensure you have placed Caddy, MariaDB, and PHP in their respective directories under `bin/` or clicked "Auto Download".
+
+**Q: Port is already occupied?**  
+A: Change the port settings in WinCMP or close other applications (like XAMPP/WAMP/IIS) using that port.
+
+**Q: Database connection failed?**  
+A: Ensure the MariaDB service is running. Check `conf/my.ini`. If using an external database, ensure the "Custom" database mode is enabled in Settings.
+
+**Q: Runtime startup failed?**  
+A: For Python/Go types, verify they are in your system PATH (`python -V` or `go version` works in terminal). For Node.js/Bun, verify they exist in `bin/node/` or `bin/bun/`.
+
+**Q: How to back up databases?**  
+A: The database files are located in `data/mariadb/`. You can copy this folder directly to back them up.
+
+**Q: Can I carry this project to another computer?**  
+A: Yes! WinCMP is fully portable. Just copy the entire folder to another PC.
 
 ---
 
-## 💡 相關連結
+## 📄 License
 
-- **Caddy**：https://caddyserver.com/
-- **MariaDB**：https://mariadb.org/
-- **PHP**：https://www.php.net/
-- **Mailpit**：https://mailpit.axllent.org/
-- **Bun**：https://bun.sh/
-- **Node.js**：https://nodejs.org/
+This project is licensed under the [MIT License](LICENSE).
 
 ---
 
-*感謝您使用 WinCMP！若有任何問題或建議，歡迎提交 Issue。*
+## 💡 Links
+
+- **Caddy**: https://caddyserver.com/
+- **MariaDB**: https://mariadb.org/
+- **PHP**: https://www.php.net/
+- **Mailpit**: https://mailpit.axllent.org/
+- **Bun**: https://bun.sh/
+- **Node.js**: https://nodejs.org/
+
+---
+
+*Thank you for using WinCMP! Please submit an issue if you have any questions.*
