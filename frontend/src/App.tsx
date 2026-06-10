@@ -12,15 +12,16 @@ import { GetAppVersion, IsAdmin, GetConfig } from '../wailsjs/go/main/App';
 import logo from './assets/images/icon.svg';
 import { t, setLanguage, useLanguage } from './i18n';
 
+// 用於追蹤在本次 App 生命週期中是否已觸發過 Projects 自動收合 sidebar
+let projectsCollapsedTriggered = false;
+
 export default function App() {
   useLanguage(); // 訂閱語系變更
 
   const [activeTab, setActiveTab] = useState<'dashboard' | 'projects' | 'db_explorer' | 'resources' | 'settings' | 'logs' | 'update'>('dashboard');
-  const [showLogs, setShowLogs] = useState(() => {
-    return localStorage.getItem('wincmp_show_logs') === 'true';
-  });
+  const [showLogs, setShowLogs] = useState(false);
   const [systemResources, setSystemResources] = useState({ cpu: 0, memory: 0 });
-  const [isCollapsed, setIsCollapsed] = useState(() => localStorage.getItem('sidebar_collapsed') === 'true');
+  const [isCollapsed, setIsCollapsed] = useState(false);
   const [customAlert, setCustomAlert] = useState<{ isOpen: boolean; message: string; resolve?: () => void }>({ isOpen: false, message: '' });
   const [customConfirm, setCustomConfirm] = useState<{ isOpen: boolean; message: string; resolve?: (value: boolean) => void }>({ isOpen: false, message: '' });
 
@@ -81,6 +82,16 @@ export default function App() {
     // 離開設定頁面時確保重置 dirty state
     (window as any).isSettingsDirty = false;
     setActiveTab(tabId);
+
+    // 首次進入 Projects 頁面且專案內容不為空時，自動收合側邊欄
+    if (tabId === 'projects' && !projectsCollapsedTriggered) {
+      projectsCollapsedTriggered = true;
+      GetConfig().then((cfg: any) => {
+        if (cfg && cfg.projects && cfg.projects.length > 0) {
+          setIsCollapsed(true);
+        }
+      }).catch((err: any) => console.error("首次進入專案頁面獲取設定失敗:", err));
+    }
   };
 
   // 覆寫與註冊漂亮的自訂彈窗，避免 wails.localhost 標題
@@ -117,19 +128,11 @@ export default function App() {
   }, []);
 
   const toggleSidebar = () => {
-    setIsCollapsed(prev => {
-      const next = !prev;
-      localStorage.setItem('sidebar_collapsed', String(next));
-      return next;
-    });
+    setIsCollapsed(prev => !prev);
   };
 
   const handleToggleLogs = () => {
-    setShowLogs(prev => {
-      const next = !prev;
-      localStorage.setItem('wincmp_show_logs', String(next));
-      return next;
-    });
+    setShowLogs(prev => !prev);
   };
 
   // 訂閱 Go 端推送的 CPU / RAM 資源佔用
@@ -167,7 +170,6 @@ export default function App() {
   useEffect(() => {
     const handleAutoExpand = () => {
       setShowLogs(true);
-      localStorage.setItem('wincmp_show_logs', 'true');
     };
     window.addEventListener('wincmp_auto_expand_logs', handleAutoExpand);
     return () => {

@@ -23,6 +23,9 @@ import DependencyManager from './DependencyManager';
 import { EventsOn, EventsOff } from '../../wailsjs/runtime/runtime';
 import { t, useLanguage } from '../i18n';
 
+// 追蹤本次 App 執行期間是否已自動展開過 Terminal Logs (重啟或重新載入時重置)
+let logsAutoExpanded = false;
+
 export default function Dashboard() {
   useLanguage(); // 訂閱語系變更
   const [config, setConfig] = useState<any>(null);
@@ -108,8 +111,8 @@ export default function Dashboard() {
   };
 
   const triggerAutoExpandLogs = () => {
-    if (localStorage.getItem('wincmp_logs_auto_expanded') !== 'true') {
-      localStorage.setItem('wincmp_logs_auto_expanded', 'true');
+    if (!logsAutoExpanded) {
+      logsAutoExpanded = true;
       window.dispatchEvent(new CustomEvent('wincmp_auto_expand_logs'));
     }
   };
