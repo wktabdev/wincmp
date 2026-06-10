@@ -56,8 +56,8 @@ jobs:
           }
           echo "VERSION=$version" >> $env:GITHUB_OUTPUT
           
-          # 讀取由 release.ps1 產生的中文 Release Note 作為 Release 內文描述
-          $notesFile = "release_note/v$version/release_notes_zh.md"
+          # 讀取由 release.ps1 產生的英文 Release Note 作為 Release 內文描述
+          $notesFile = "release_note/v$version/release_notes.md"
           if (Test-Path $notesFile) {
               $content = Get-Content $notesFile -Raw
               $content | Out-File -FilePath release_notes_temp.txt -Encoding utf8
