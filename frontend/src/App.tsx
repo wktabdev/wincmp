@@ -514,7 +514,7 @@ export default function App() {
               {/* Search Results Dropdown */}
               {isSearchFocused && searchQuery && (
                 <div
-                  className="absolute z-[9999] left-0 right-0 mt-1 rounded-lg max-h-60 overflow-y-auto divide-y"
+                  className="absolute z-[9999] left-0 right-0 mt-1 rounded-lg max-h-60 overflow-y-auto divide-y divide-[var(--border-soft)]"
                   style={{
                     background: 'var(--sidebar-bg)',
                     border: '1px solid var(--border)',

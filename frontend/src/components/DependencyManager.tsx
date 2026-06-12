@@ -252,7 +252,7 @@ export default function DependencyManager({ isOpen, onClose, onInstalled }: Depe
                 <h3 className="text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 select-none pb-2" style={{ color: 'var(--status-info)', borderBottom: '1px solid var(--border-soft)', fontFamily: 'var(--font-display)' }}>
                   <Cpu size={13} /> {t("核心執行環境")}
                 </h3>
-                <div className="divide-y" style={{ borderColor: 'var(--border-soft)' }}>
+                <div className="divide-y divide-[var(--border-soft)]">
                   {renderDependencyRow('caddy', 'Caddy Web 伺服器', <Server size={16} />)}
                   {renderDependencyRow('mariadb', 'MariaDB 資料庫', <Database size={16} />)}
                 </div>
@@ -278,7 +278,7 @@ export default function DependencyManager({ isOpen, onClose, onInstalled }: Depe
                 <h3 className="text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 select-none pb-2" style={{ color: 'var(--accent)', borderBottom: '1px solid var(--border-soft)', fontFamily: 'var(--font-display)' }}>
                   <SettingsIcon size={13} /> {t("開發輔助工具與實用工具")}
                 </h3>
-                <div className="divide-y" style={{ borderColor: 'var(--border-soft)' }}>
+                <div className="divide-y divide-[var(--border-soft)]">
                   {renderDependencyRow('composer', 'Composer (PHP 包管理器)', <Terminal size={16} />)}
                   {renderDependencyRow('node', 'Node.js LTS 運行環境', <Terminal size={16} />)}
                   {renderDependencyRow('mailpit', 'Mailpit 郵件測試伺服器', <Server size={16} />)}
