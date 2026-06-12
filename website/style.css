@@ -79,15 +79,15 @@
     --bg-card: hsl(0, 0%, 100%);
     --bg-card-hover: hsl(40, 20%, 97%);
     --border-color: hsl(40, 15%, 82%);
-    --border-hover: hsl(250, 60%, 60%);
+    --border-hover: hsl(215, 70%, 65%);
 
     --text-primary: hsl(220, 25%, 15%);
     --text-secondary: hsl(220, 15%, 40%);
     --text-muted: hsl(220, 10%, 55%);
 
-    --primary: hsl(250, 60%, 52%);
-    --primary-hover: hsl(250, 60%, 42%);
-    --primary-glow: rgba(99, 102, 241, 0.15);
+    --primary: hsl(215, 70%, 42%);
+    --primary-hover: hsl(215, 70%, 34%);
+    --primary-glow: rgba(30, 90, 200, 0.15);
 
     --accent-emerald: hsl(155, 55%, 38%);
     --accent-emerald-glow: rgba(16, 185, 129, 0.1);
@@ -110,12 +110,12 @@
     --spinner-track: hsl(40, 15%, 88%);
     --btn-secondary-bg: hsl(40, 15%, 93%);
     --btn-secondary-hover-bg: hsl(40, 15%, 88%);
-    --highlight-col-bg: hsl(250, 50%, 95%);
-    --highlight-col-border: hsl(250, 40%, 85%);
-    --highlight-col-th-bg: hsl(250, 50%, 92%);
+    --highlight-col-bg: hsl(215, 50%, 95%);
+    --highlight-col-border: hsl(215, 40%, 85%);
+    --highlight-col-th-bg: hsl(215, 50%, 92%);
     --logo-gradient-start: var(--text-primary);
     --gradient-text-1: hsl(195, 70%, 40%);
-    --gradient-text-2: hsl(250, 60%, 52%);
+    --gradient-text-2: hsl(215, 70%, 42%);
     --gradient-text-3: hsl(345, 65%, 50%);
     --active-tab-color: #ffffff;
     --markdown-h-color: var(--text-primary);
@@ -124,6 +124,10 @@
     --footer-bg: hsl(40, 15%, 91%);
     --theme-toggle-bg: hsl(40, 15%, 90%);
     --theme-toggle-hover-bg: hsl(40, 15%, 85%);
+
+    --badge-bg: hsla(215, 70%, 42%, 0.08);
+    --badge-border: hsla(215, 70%, 42%, 0.18);
+    --badge-text: var(--primary);
 }
 
 /* --- 基礎樣式重設 --- */
@@ -471,13 +475,13 @@ body.menu-open {
     display: inline-flex;
     align-items: center;
     gap: 8px;
-    background-color: rgba(99, 102, 241, 0.1);
-    border: 1px solid rgba(99, 102, 241, 0.2);
+    background-color: var(--badge-bg, rgba(99, 102, 241, 0.1));
+    border: 1px solid var(--badge-border, rgba(99, 102, 241, 0.2));
     padding: 6px 16px;
     border-radius: 9999px;
     font-size: 14px;
     font-weight: 500;
-    color: var(--primary-hover);
+    color: var(--badge-text, var(--primary-hover));
 }
 
 .pulse-dot {

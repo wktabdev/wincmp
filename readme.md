@@ -9,7 +9,7 @@
 **WinCMP** is a modern, portable local development environment control panel designed specifically for Windows. 
 The name is derived from **Win**dows + **C**addy + **M**ariaDB + **P**HP.
 
-Inspired by XAMPP and Laragon, WinCMP aims to provide a more lightweight, **portable (no installation required)**, and **mostly admin-privilege-free** development solution (excluding optional Hosts file modifications). Built with Go core and the Wails v2 framework, it features a premium React 18 frontend with extremely low resource usage, fast startup speeds, and beautiful visual aesthetics.
+Inspired by XAMPP and Laragon, WinCMP aims to provide a more lightweight, **portable (no installation required)**, and **mostly admin-privilege-free** development solution (excluding optional Hosts file modifications). Built with Go core and the Wails v2 framework, it features a premium React 18 frontend with low resource usage, fast startup speeds, and beautiful visual aesthetics.
 
 ---
 
@@ -21,7 +21,7 @@ Inspired by XAMPP and Laragon, WinCMP aims to provide a more lightweight, **port
 
 ## ✨ Features
 
-- 🪶 **Extremely Lightweight & Single Executable**: Statically compiled in Go + Wails. Runs entirely from a single `wincmp.exe` without extra setup, automatically generating default config files on startup.
+- 🪶 **Lightweight & Single Executable**: Statically compiled in Go + Wails. Runs entirely from a single `wincmp.exe` without extra setup, automatically generating default config files on startup.
 - 📦 **Fully Portable & Easy Migration**: Easily migrate your workspace by copying the core `conf/wincmp.json` and the `/bin` directory. Fully portable and ready to run on any Windows machine instantly.
 - 🛡️ **No Admin Privileges Needed for Core Services**: Fully supports running under restricted environments without modifying system environment variables or writing to the registry. *(Note: Automatic writing to the Windows `hosts` file for custom domains is optional and requires Administrator elevation/UAC prompt).*
 - 🎨 **Modern UI/UX**: Premium Dark Professional theme with smooth sidebar navigation, real-time status monitoring, and interactive micro-animations.
