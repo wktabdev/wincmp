@@ -18,32 +18,46 @@ interface ReleaseInfo {
 // 輕量級 Regex Markdown 渲染器
 function renderMarkdown(md: string): string {
   if (!md) return '';
-  // 轉義 HTML 特殊字元防止 XSS
-  let html = md
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
 
-  // 標題 1: # Header
-  html = html.replace(/^#\s+(.+)$/gm, '<h1 style="color:var(--fg);border-bottom:1px solid var(--border-soft);padding-bottom:4px;margin-top:12px;margin-bottom:6px" class="text-sm font-bold">$1</h1>');
-  // 標題 2: ## Header
-  html = html.replace(/^##\s+(.+)$/gm, '<h2 style="color:var(--fg-2)" class="text-xs font-bold mt-2.5 mb-1 flex items-center gap-1">$1</h2>');
-  // 標題 3: ### Header
-  html = html.replace(/^###\s+(.+)$/gm, '<h3 style="color:var(--muted)" class="text-[11px] font-bold mt-2 mb-0.5">$1</h3>');
+  // 1. 將文字按行拆分，並過濾掉空白的行
+  const lines = md.split(/\r?\n/).filter(line => line.trim() !== '');
 
-  // 粗體: **text**
-  html = html.replace(/\*\*([^\*]+)\*\*/g, '<strong style="color:var(--fg)" class="font-bold">$1</strong>');
+  // 2. 逐行解析並轉譯
+  const htmlLines = lines.map(line => {
+    // 轉義 HTML 特殊字元防止 XSS
+    let processed = line
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
 
-  // 行內 code `code`
-  html = html.replace(/`([^`\n]+)`/g, '<code style="background:var(--surface);color:var(--status-warn);font-family:var(--font-mono)" class="px-1 py-0.5 rounded text-[10px]">$1</code>');
+    // 處理粗體: **text**
+    processed = processed.replace(/\*\*([^\*]+)\*\*/g, '<strong style="color:var(--fg)" class="font-bold">$1</strong>');
 
-  // 無序清單: - list
-  html = html.replace(/^[-\*]\s+(.+)$/gm, '<li style="color:var(--muted)" class="ml-4 list-disc mb-1 text-[11px]">$1</li>');
+    // 處理行內 code: `code`
+    processed = processed.replace(/`([^`\n]+)`/g, '<code style="background:var(--surface);color:var(--status-warn);font-family:var(--font-mono)" class="px-1 py-0.5 rounded text-[11px]">$1</code>');
 
-  // 段落換行
-  html = html.replace(/\n/g, '<br />');
+    // 標題 1: # Header
+    if (/^#\s+(.+)$/.test(processed)) {
+      return processed.replace(/^#\s+(.+)$/, '<h1 style="color:var(--fg);border-bottom:1px solid var(--border-soft);padding-bottom:6px;margin-top:14px;margin-bottom:10px" class="text-base font-bold">$1</h1>');
+    }
+    // 標題 2: ## Header
+    if (/^##\s+(.+)$/.test(processed)) {
+      return processed.replace(/^##\s+(.+)$/, '<h2 style="color:var(--fg-2);margin-top:20px;margin-bottom:8px" class="text-sm font-bold flex items-center gap-1">$1</h2>');
+    }
+    // 標題 3: ### Header
+    if (/^###\s+(.+)$/.test(processed)) {
+      return processed.replace(/^###\s+(.+)$/, '<h3 style="color:var(--muted);margin-top:14px;margin-bottom:6px" class="text-xs font-bold">$1</h3>');
+    }
+    // 無序清單: - list
+    if (/^[-\*]\s+(.+)$/.test(processed)) {
+      return processed.replace(/^[-\*]\s+(.+)$/, '<li style="color:var(--muted);margin-bottom:6px" class="ml-4 list-disc text-xs leading-normal">$1</li>');
+    }
 
-  return html;
+    // 一般文字段落，包在 div 中並加入微調的 margin 避免粘連
+    return `<div style="margin-bottom:10px;color:var(--muted)" class="text-xs leading-normal">${processed}</div>`;
+  });
+
+  return htmlLines.join('');
 }
 
 export default function VersionUpdate() {
@@ -315,7 +329,7 @@ export default function VersionUpdate() {
                     {releaseInfo.has_update ? t("新版本更新說明") : t("版本更新說明")}
                   </div>
                   <div
-                    className="rounded-lg p-5 max-h-96 overflow-y-auto leading-relaxed text-[11px]"
+                    className="rounded-lg p-5 leading-normal text-xs"
                     style={{ background: 'var(--bg-deep)', border: '1px solid var(--border)' }}
                     dangerouslySetInnerHTML={{ __html: getNotesContent() || `<span style="color:var(--meta)">${t("無詳細更新說明")}</span>` }}
                   />
