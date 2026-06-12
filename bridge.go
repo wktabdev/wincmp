@@ -44,7 +44,7 @@ func (a *App) GetDetailedResources() (resource.DetailedResources, error) {
 
 // CheckPortConflicts 檢查核心服務端口是否被佔用
 func (a *App) CheckPortConflicts() (map[string]bool, error) {
-	ports := []int{80, 443}
+	var ports []int
 
 	// MariaDB Port
 	dbPort := a.appCfg.Global.MariaDBPort
@@ -67,9 +67,7 @@ func (a *App) CheckPortConflicts() (map[string]bool, error) {
 	conflicts := make(map[string]bool)
 	for _, p := range ports {
 		isRunning := false
-		if p == 80 || p == 443 {
-			isRunning = a.procMgr.IsRunning("caddy")
-		} else if p == dbPort {
+		if p == dbPort {
 			isRunning = a.IsMariaDBRunning()
 		} else if p == smtpPort || p == httpPort {
 			isRunning = a.procMgr.IsRunning("mailpit")
