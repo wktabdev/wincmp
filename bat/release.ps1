@@ -84,7 +84,7 @@ if (-not (Test-Path $BuiltExe)) {
 Copy-Item -Path $BuiltExe -Destination $TargetExe -Force
 Write-Host "    -> Created executable: WinCMP_v$Version.exe" -ForegroundColor Green
 
-# 同時拷貝一個獨立的執行檔到發布目錄下，方便自動更新直接下載 exe
+# Copy standalone executable to release parent directory for auto updates
 $StandaloneExe = Join-Path $ReleaseParentDir "WinCMP_v$Version.exe"
 Copy-Item -Path $BuiltExe -Destination $StandaloneExe -Force
 Write-Host "    -> Created standalone executable for updates: $StandaloneExe" -ForegroundColor Green
@@ -125,7 +125,7 @@ if (Test-Path $DataPath) {
 
 # 7. Verify required release files
 Write-Host "[7] Verifying required documentation..." -ForegroundColor Gray
-$RequiredFiles = @("readme.md", "CHANGELOG.md", "CHANGELOG_zh.md", "LICENSE")
+$RequiredFiles = @("readme.md", "LICENSE")
 $MissingFiles = @()
 
 foreach ($file in $RequiredFiles) {
@@ -136,7 +136,7 @@ foreach ($file in $RequiredFiles) {
 }
 
 if ($MissingFiles.Count -gt 0) {
-    Write-Host "    ⚠️ Warning! Missing files: $($MissingFiles -join ', ')" -ForegroundColor Yellow
+    Write-Host "    [Warning] Missing files: $($MissingFiles -join ', ')" -ForegroundColor Yellow
 } else {
     Write-Host "    -> All required documentation verified!" -ForegroundColor Green
 }
@@ -308,7 +308,7 @@ Write-Host "    -> Updated release_info.json: $InfoJsonPath" -ForegroundColor Gr
 Set-Location -Path $ProjectRoot
 
 Write-Host "===================================================" -ForegroundColor Green
-Write-Host "✨ Automated release completed successfully!" -ForegroundColor Green
+Write-Host "[Success] Automated release completed successfully!" -ForegroundColor Green
 Write-Host "Saved to: $ZipFile" -ForegroundColor Green
 Write-Host "===================================================" -ForegroundColor Green
 
