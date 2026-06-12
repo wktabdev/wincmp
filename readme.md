@@ -142,10 +142,10 @@ node scripts/generate-release-json.js
 ## 🗺️ Roadmap
 
 ### ✅ Completed
-- [x] Modern UI prototype and project management interface (rebuilt with Wails + React 18).
-- [x] Multi-tab system logs with log-rotation mechanism.
-- [x] MariaDB scanning and database viewer.
-- [x] Multi-process PHP load balancing for Caddy.
+- [x] **Modern UI** prototype and project management interface (rebuilt with Wails + React 18).
+- [x] **Multi-tab system logs** with log-rotation mechanism (lumberjack).
+- [x] **MariaDB scanning** and database viewer (simple preview + one-click download HeidiSQL).
+- [x] **Multi-process PHP** load balancing for Caddy (runs multiple PHP instances on different ports, with Caddy responsible for distribution).
 - [x] **Windows System Tray** minimization support.
 - [x] **Resume Last Services**: Auto-starts services that were running when the app was closed (saved in `wincmp.json`).
 - [x] **Service Uptime Tracker** (independent stats for Caddy, MariaDB, and PHP).
@@ -159,13 +159,10 @@ node scripts/generate-release-json.js
 - [x] **Legacy Project Auto-Migration** (node_port → runtime_port, etc.).
 - [x] **Mailpit Integration** (start/stop toggle on Dashboard and configuration dialog).
 - [x] **Project Integrated Interactive Terminal** (integrated Windows ConPTY with `xterm.js` to support interactive CLI, auto-completion, and customization in Settings).
+- [x] **Version Auto-Downloader**: Service executables (Caddy/PHP/MariaDB, etc.) multi-version auto-downloader.
 
 ### ⏳ Planned
-> **💡 For a detailed roadmap, technical analysis, and prioritization, please refer to the complete [Develop Task List](doc/develop_task_list.md).**
-
-- **Deep OS Integration**: Windows auto-start on boot (`HKCU\Run`), one-click setup for Windows system environment path (`Path`).
 - **Dev Toolchain**: Embedded Composer support (no `composer.phar` installation needed), PHP process watchdog with auto-recovery.
-- **Advanced Service Manager**: HeidiSQL integration (preview & fast connection), automated downloader for service executables (Caddy/PHP/MariaDB multi-version).
 
 ---
 
@@ -178,7 +175,7 @@ WinCMP wouldn't be possible without the inspiration and support of these fantast
   - [React 18](https://react.dev/) — Fluid and powerful frontend library
   - [Windows ConPTY](https://learn.microsoft.com/en-us/windows/console/pseudoconsole) & [xterm.js](https://xtermjs.org/) — Immersive built-in terminal experience
 - **Design & Themes**:
-  - Special thanks to the [Open Design](https://github.com/) community for providing visual guidelines and design tokens for the premium Dark Professional theme.
+  - Special thanks to the [Open Design](https://github.com/nexu-io/open-design) community for providing visual guidelines and design tokens for the premium Dark Professional theme.
 
 ## 📄 License
 
