@@ -107,9 +107,12 @@ export const enTranslations: Record<string, string> = {
   "(核心配置)": "(Core Config)",
 
   // Dashboard.tsx
-  "偵測到核心依賴元件缺失": "Core Dependencies Missing",
-  "本機未安裝：": "Not installed locally: ",
-  "。請先完成依賴安裝以確保專案與服務正常運作。": ". Please download dependencies to ensure services run properly.",
+  "偵測到核心依賴 Caddy 缺失": "Core Dependency Caddy Missing",
+  "本機未安裝 Caddy Web 伺服器。請先完成依賴安裝以確保服務正常運作。": "Caddy Web Server is not installed locally. Please install the dependency first to ensure services run properly.",
+  "Caddy 已就緒": "Caddy Ready",
+  "Caddy 未就緒": "Caddy Not Ready",
+  "核心依賴 Caddy 缺失": "Core Dependency Caddy Missing",
+  "核心依賴配置正常": "Core dependency configured normally",
   "立即下載": "Download",
   "關閉": "Close",
   "Caddy Web 伺服器": "Caddy Web Server",

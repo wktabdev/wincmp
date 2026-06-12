@@ -21,7 +21,7 @@ export default function Dashboard() {
   const [loadingServices, setLoadingServices] = useState<Record<string, boolean>>({});
   const [isScanning, setIsScanning] = useState(false);
   const [showDepManager, setShowDepManager] = useState(false);
-  const [missingCore, setMissingCore] = useState<{ caddy: boolean; php: boolean }>({ caddy: false, php: false });
+  const [missingCore, setMissingCore] = useState<{ caddy: boolean }>({ caddy: false });
   const [dismissBanner, setDismissBanner] = useState(false);
   const [portConflicts, setPortConflicts] = useState<Record<string, boolean>>({});
 
@@ -35,7 +35,7 @@ export default function Dashboard() {
         await updateStatus();
         await updateConflicts();
         const missing = await CheckMissingCoreDependencies();
-        setMissingCore({ caddy: !!missing?.caddy, php: !!missing?.php });
+        setMissingCore({ caddy: !!missing?.caddy });
       } catch (err) { console.error("初始化資料失敗:", err); }
     }
     initData();
@@ -61,7 +61,7 @@ export default function Dashboard() {
       setScanResult(res);
       await updateStatus();
       const missing = await CheckMissingCoreDependencies();
-      setMissingCore({ caddy: !!missing?.caddy, php: !!missing?.php });
+      setMissingCore({ caddy: !!missing?.caddy });
     } catch (err) { console.error("掃描二進位服務失敗:", err); }
     finally { setIsScanning(false); }
   };
@@ -133,17 +133,16 @@ export default function Dashboard() {
     <div className="p-6 overflow-y-auto h-full space-y-6">
 
       {/* ─── Missing Dependencies Banner ────────────────────── */}
-      {(missingCore.caddy || missingCore.php) && !dismissBanner && (
+      {missingCore.caddy && !dismissBanner && (
         <div className="relative rounded-xl p-4 pr-10 md:pr-14 flex flex-col md:flex-row justify-between items-start md:items-center gap-4" style={{ background: 'var(--status-error-bg)', border: '1px solid var(--status-error)', boxShadow: 'var(--shadow-md)' }}>
           <div className="flex items-center gap-3 flex-1 min-w-0">
             <div className="p-2.5 rounded-lg shrink-0" style={{ background: 'var(--status-error-bg)', color: 'var(--status-error)' }}>
               <AlertTriangle size={18} />
             </div>
             <div className="flex-1 min-w-0">
-              <span className="font-bold block text-sm" style={{ color: 'var(--status-error)' }}>⚠️ {t("偵測到核心依賴元件缺失")}</span>
+              <span className="font-bold block text-sm" style={{ color: 'var(--status-error)' }}>⚠️ {t("偵測到核心依賴 Caddy 缺失")}</span>
               <span className="text-xs mt-0.5 block" style={{ color: 'var(--fg-2)' }}>
-                {t("本機未安裝：")}
-                {[missingCore.caddy && t("Caddy Web 伺服器"), missingCore.php && t("PHP 執行環境")].filter(Boolean).join(t("、"))}{t("。請先完成依賴安裝以確保專案與服務正常運作。")}
+                {t("本機未安裝 Caddy Web 伺服器。請先完成依賴安裝以確保服務正常運作。")}
               </span>
             </div>
           </div>
@@ -430,26 +429,13 @@ export default function Dashboard() {
             <div className="mt-2.5">
               {(() => {
                 const hasCaddy = !!scanResult?.CaddyList?.length;
-                const hasMariaDB = !!scanResult?.MariaDBList?.length;
-                const hasPHP = !!scanResult?.PHPList?.length;
-                const hasMailpit = !!scanResult?.MailpitList?.length;
-                let readyCount = 0;
-                if (hasCaddy) readyCount++;
-                if (hasMariaDB) readyCount++;
-                if (hasPHP) readyCount++;
-                if (hasMailpit) readyCount++;
-                const missing = [];
-                if (!hasCaddy) missing.push('Caddy');
-                if (!hasPHP) missing.push('PHP');
-                if (!hasMariaDB) missing.push('MariaDB');
-                if (!hasMailpit) missing.push('Mailpit');
                 return (
                   <>
-                    <span className="text-xl font-black tracking-tight" style={{ color: readyCount === 4 ? 'var(--fg)' : 'var(--status-warn)', fontFamily: 'var(--font-mono)' }}>
-                      {t("%s / 4 已就緒", readyCount)}
+                    <span className="text-xl font-black tracking-tight" style={{ color: hasCaddy ? 'var(--fg)' : 'var(--status-warn)', fontFamily: 'var(--font-mono)' }}>
+                      {hasCaddy ? t("Caddy 已就緒") : t("Caddy 未就緒")}
                     </span>
                     <p className="text-[10px] mt-2 font-medium" style={{ color: 'var(--meta)' }}>
-                      {readyCount === 4 ? t("所有核心依賴配置正常") : `${t("缺: ")}${missing.join(', ')}`}
+                      {hasCaddy ? t("核心依賴配置正常") : t("核心依賴 Caddy 缺失")}
                     </p>
                   </>
                 );
