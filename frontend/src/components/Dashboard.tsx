@@ -160,9 +160,9 @@ export default function Dashboard() {
 
       {/* ─── Header ─────────────────────────────────────────── */}
       <div className="flex justify-between items-center select-none">
-        <div>
+        <div className="flex items-baseline gap-3">
           <h1 className="text-xl font-bold tracking-tight" style={{ color: 'var(--fg)', fontFamily: 'var(--font-display)' }}>{t("儀表板")}</h1>
-          <p className="text-xs mt-1" style={{ color: 'var(--muted)' }}>{t("管理 Caddy, MariaDB, PHP-CGI 與背景開發服務")}</p>
+          <p className="text-xs" style={{ color: 'var(--muted)' }}>{t("管理 Caddy, MariaDB, PHP-CGI 與背景開發服務")}</p>
         </div>
         <div className="flex gap-2.5">
           <button onClick={() => setShowDepManager(true)} className="px-3 py-2 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition duration-200" style={{ background: 'var(--card)', border: '1px solid var(--border)', color: 'var(--fg-2)' }}>
@@ -176,114 +176,7 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* ─── Overview Cards ─────────────────────────────────── */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 select-none">
-        {/* Dependencies Status */}
-        <div style={cardStyle}>
-          <div className="flex items-center justify-between" style={{ color: 'var(--muted)' }}>
-            <span style={sectionTitleStyle}>{t("依賴元件狀態")}</span>
-            <Package size={16} style={{ color: 'var(--status-info)' }} />
-          </div>
-          <div className="mt-2.5">
-            {(() => {
-              const hasCaddy = !!scanResult?.CaddyList?.length;
-              const hasMariaDB = !!scanResult?.MariaDBList?.length;
-              const hasPHP = !!scanResult?.PHPList?.length;
-              const hasMailpit = !!scanResult?.MailpitList?.length;
-              let readyCount = 0;
-              if (hasCaddy) readyCount++;
-              if (hasMariaDB) readyCount++;
-              if (hasPHP) readyCount++;
-              if (hasMailpit) readyCount++;
-              const missing = [];
-              if (!hasCaddy) missing.push('Caddy');
-              if (!hasPHP) missing.push('PHP');
-              if (!hasMariaDB) missing.push('MariaDB');
-              if (!hasMailpit) missing.push('Mailpit');
-              return (
-                <>
-                  <span className="text-xl font-black tracking-tight" style={{ color: readyCount === 4 ? 'var(--fg)' : 'var(--status-warn)', fontFamily: 'var(--font-mono)' }}>
-                    {t("%s / 4 已就緒", readyCount)}
-                  </span>
-                  <p className="text-[10px] mt-2 font-medium" style={{ color: 'var(--meta)' }}>
-                    {readyCount === 4 ? t("所有核心依賴配置正常") : `${t("缺: ")}${missing.join(', ')}`}
-                  </p>
-                </>
-              );
-            })()}
-          </div>
-        </div>
 
-        {/* Port Conflicts */}
-        <div style={cardStyle}>
-          <div className="flex items-center justify-between" style={{ color: 'var(--muted)' }}>
-            <span style={sectionTitleStyle}>{t("埠口衝突檢測")}</span>
-            <AlertTriangle size={16} style={{ color: Object.values(portConflicts).some(Boolean) ? 'var(--status-error)' : 'var(--status-ok)' }} />
-          </div>
-          <div className="mt-2.5">
-            {(() => {
-              const conflicts = Object.keys(portConflicts).filter(port => portConflicts[port]);
-              const hasConflict = conflicts.length > 0;
-              return (
-                <>
-                  <span className="text-xl font-black tracking-tight" style={{ color: hasConflict ? 'var(--status-error)' : 'var(--status-ok)', fontFamily: 'var(--font-mono)' }}>
-                    {hasConflict ? t("%s 個衝突", conflicts.length) : t("無埠口衝突")}
-                  </span>
-                  <p className="text-[10px] mt-2 font-medium truncate" style={{ color: 'var(--meta)' }}>
-                    {hasConflict ? `Port: ${conflicts.join(', ')} ${t("被佔用")}` : t("本機埠口使用正常")}
-                  </p>
-                </>
-              );
-            })()}
-          </div>
-        </div>
-
-        {/* Hosts Domains */}
-        <div style={cardStyle}>
-          <div className="flex items-center justify-between" style={{ color: 'var(--muted)' }}>
-            <span style={sectionTitleStyle}>{t("Hosts 本地網域")}</span>
-            <Layers size={16} style={{ color: 'var(--status-ok)' }} />
-          </div>
-          <div className="mt-2.5">
-            {(() => {
-              let domainCount = 0;
-              config?.projects?.forEach((p: any) => { if (p.enabled && p.domains) domainCount += p.domains.length; });
-              const autoUpdate = config?.global?.auto_update_hosts;
-              return (
-                <>
-                  <span className="text-xl font-black tracking-tight" style={{ color: 'var(--fg)', fontFamily: 'var(--font-mono)' }}>{t("%s 個網域", domainCount)}</span>
-                  <p className="text-[10px] mt-2 font-medium" style={{ color: 'var(--meta)' }}>
-                    {t("Hosts 自動同步: ")}{autoUpdate ? t("開啟") : t("關閉")}
-                  </p>
-                </>
-              );
-            })()}
-          </div>
-        </div>
-
-        {/* Projects Overview */}
-        <div style={cardStyle}>
-          <div className="flex items-center justify-between" style={{ color: 'var(--muted)' }}>
-            <span style={sectionTitleStyle}>{t("託管專案概覽")}</span>
-            <Folder size={16} style={{ color: 'var(--accent)' }} />
-          </div>
-          <div className="mt-2.5">
-            {(() => {
-              const total = config?.projects?.length || 0;
-              const enabled = config?.projects?.filter((p: any) => p.enabled).length || 0;
-              const rate = total > 0 ? Math.round((enabled / total) * 100) : 0;
-              return (
-                <>
-                  <span className="text-xl font-black tracking-tight" style={{ color: 'var(--fg)', fontFamily: 'var(--font-mono)' }}>{t("%s / %s 啟用", enabled, total)}</span>
-                  <p className="text-[10px] mt-2 font-medium" style={{ color: 'var(--meta)' }}>
-                    {t("專案啟用率: ")}{rate}%
-                  </p>
-                </>
-              );
-            })()}
-          </div>
-        </div>
-      </div>
 
       {/* ─── Core System Services ───────────────────────────── */}
       <div className="space-y-4">
@@ -518,6 +411,122 @@ export default function Dashboard() {
             {t("未偵測到任何已安裝的 PHP 版本。請將 PHP 解壓縮後放入 ./bin/php/ 目錄下。")}
           </div>
         )}
+      </div>
+
+      {/* ─── System Status Overview ────────────────────────── */}
+      <div className="space-y-4 pt-2">
+        <div className="flex items-center gap-2 select-none border-b pb-2" style={{ borderColor: 'var(--border-soft)' }}>
+          <Layers size={15} style={{ color: 'var(--status-info)' }} />
+          <h3 className="font-bold text-sm" style={{ color: 'var(--fg)', fontFamily: 'var(--font-display)' }}>{t("系統狀態概覽")}</h3>
+        </div>
+
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 select-none">
+          {/* Dependencies Status */}
+          <div style={cardStyle}>
+            <div className="flex items-center justify-between" style={{ color: 'var(--muted)' }}>
+              <span style={sectionTitleStyle}>{t("依賴元件狀態")}</span>
+              <Package size={16} style={{ color: 'var(--status-info)' }} />
+            </div>
+            <div className="mt-2.5">
+              {(() => {
+                const hasCaddy = !!scanResult?.CaddyList?.length;
+                const hasMariaDB = !!scanResult?.MariaDBList?.length;
+                const hasPHP = !!scanResult?.PHPList?.length;
+                const hasMailpit = !!scanResult?.MailpitList?.length;
+                let readyCount = 0;
+                if (hasCaddy) readyCount++;
+                if (hasMariaDB) readyCount++;
+                if (hasPHP) readyCount++;
+                if (hasMailpit) readyCount++;
+                const missing = [];
+                if (!hasCaddy) missing.push('Caddy');
+                if (!hasPHP) missing.push('PHP');
+                if (!hasMariaDB) missing.push('MariaDB');
+                if (!hasMailpit) missing.push('Mailpit');
+                return (
+                  <>
+                    <span className="text-xl font-black tracking-tight" style={{ color: readyCount === 4 ? 'var(--fg)' : 'var(--status-warn)', fontFamily: 'var(--font-mono)' }}>
+                      {t("%s / 4 已就緒", readyCount)}
+                    </span>
+                    <p className="text-[10px] mt-2 font-medium" style={{ color: 'var(--meta)' }}>
+                      {readyCount === 4 ? t("所有核心依賴配置正常") : `${t("缺: ")}${missing.join(', ')}`}
+                    </p>
+                  </>
+                );
+              })()}
+            </div>
+          </div>
+
+          {/* Port Conflicts */}
+          <div style={cardStyle}>
+            <div className="flex items-center justify-between" style={{ color: 'var(--muted)' }}>
+              <span style={sectionTitleStyle}>{t("埠口衝突檢測")}</span>
+              <AlertTriangle size={16} style={{ color: Object.values(portConflicts).some(Boolean) ? 'var(--status-error)' : 'var(--status-ok)' }} />
+            </div>
+            <div className="mt-2.5">
+              {(() => {
+                const conflicts = Object.keys(portConflicts).filter(port => portConflicts[port]);
+                const hasConflict = conflicts.length > 0;
+                return (
+                  <>
+                    <span className="text-xl font-black tracking-tight" style={{ color: hasConflict ? 'var(--status-error)' : 'var(--status-ok)', fontFamily: 'var(--font-mono)' }}>
+                      {hasConflict ? t("%s 個衝突", conflicts.length) : t("無埠口衝突")}
+                    </span>
+                    <p className="text-[10px] mt-2 font-medium truncate" style={{ color: 'var(--meta)' }}>
+                      {hasConflict ? `Port: ${conflicts.join(', ')} ${t("被佔用")}` : t("本機埠口使用正常")}
+                    </p>
+                  </>
+                );
+              })()}
+            </div>
+          </div>
+
+          {/* Hosts Domains */}
+          <div style={cardStyle}>
+            <div className="flex items-center justify-between" style={{ color: 'var(--muted)' }}>
+              <span style={sectionTitleStyle}>{t("Hosts 本地網域")}</span>
+              <Layers size={16} style={{ color: 'var(--status-ok)' }} />
+            </div>
+            <div className="mt-2.5">
+              {(() => {
+                let domainCount = 0;
+                config?.projects?.forEach((p: any) => { if (p.enabled && p.domains) domainCount += p.domains.length; });
+                const autoUpdate = config?.global?.auto_update_hosts;
+                return (
+                  <>
+                    <span className="text-xl font-black tracking-tight" style={{ color: 'var(--fg)', fontFamily: 'var(--font-mono)' }}>{t("%s 個網域", domainCount)}</span>
+                    <p className="text-[10px] mt-2 font-medium" style={{ color: 'var(--meta)' }}>
+                      {t("Hosts 自動同步: ")}{autoUpdate ? t("開啟") : t("關閉")}
+                    </p>
+                  </>
+                );
+              })()}
+            </div>
+          </div>
+
+          {/* Projects Overview */}
+          <div style={cardStyle}>
+            <div className="flex items-center justify-between" style={{ color: 'var(--muted)' }}>
+              <span style={sectionTitleStyle}>{t("託管專案概覽")}</span>
+              <Folder size={16} style={{ color: 'var(--accent)' }} />
+            </div>
+            <div className="mt-2.5">
+              {(() => {
+                const total = config?.projects?.length || 0;
+                const enabled = config?.projects?.filter((p: any) => p.enabled).length || 0;
+                const rate = total > 0 ? Math.round((enabled / total) * 100) : 0;
+                return (
+                  <>
+                    <span className="text-xl font-black tracking-tight" style={{ color: 'var(--fg)', fontFamily: 'var(--font-mono)' }}>{t("%s / %s 啟用", enabled, total)}</span>
+                    <p className="text-[10px] mt-2 font-medium" style={{ color: 'var(--meta)' }}>
+                      {t("專案啟用率: ")}{rate}%
+                    </p>
+                  </>
+                );
+              })()}
+            </div>
+          </div>
+        </div>
       </div>
 
       <DependencyManager isOpen={showDepManager} onClose={() => setShowDepManager(false)} onInstalled={handleScan} />

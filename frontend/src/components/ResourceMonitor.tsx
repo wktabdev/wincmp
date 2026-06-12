@@ -117,7 +117,7 @@ export default function ResourceMonitor() {
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-xl font-bold tracking-tight flex items-center gap-2" style={{ color: 'var(--fg)' }}>
-            {t("資源監控 (Resource Monitor)")}
+            {t("資源監控")}
           </h1>
           <p className="text-xs mt-1" style={{ color: 'var(--muted)' }}>
             {t("即時監控系統總體、主程式、Web 視窗介面及各背景服務的 CPU 與 RAM 使用狀況")}
