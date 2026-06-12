@@ -113,7 +113,7 @@ func (a *App) SaveConfig(newCfg *config.WincmpConfig) error {
 				continue
 			}
 			if !hosts.IsValidDomain(domTrimmed) {
-				return fmt.Errorf("%s", i18n.Tfmt("網域 '%s' 格式不正確。僅能包含英數字、連字號(-)與點(.)，且不能包含底線、埠號或路徑。", domTrimmed))
+				return fmt.Errorf("%s", i18n.Tfmt("網域 '%s' 格式不正確。僅能包含英數字、連字號(-)、底線(_)與點(.)，且不能包含埠號或路徑。", domTrimmed))
 			}
 		}
 	}
@@ -638,7 +638,7 @@ func (a *App) triggerHostsUpdate() {
 	}
 
 	if len(invalidDomains) > 0 {
-		a.handleLog("system", i18n.Tfmt("⚠️ 以下網域含非法字元(含底線)，已跳過: %v", invalidDomains))
+		a.handleLog("system", i18n.Tfmt("⚠️ 以下網域含非法字元，已跳過: %v", invalidDomains))
 	}
 
 	if len(validMissing) == 0 {
