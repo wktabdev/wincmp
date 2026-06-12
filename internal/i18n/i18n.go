@@ -115,6 +115,7 @@ var enTranslations = map[string]string{
 	"已複製到剪貼簿":           "Copied to clipboard",
 	"以管理員權限開啟 Hosts 檔案": "Open Hosts File as Administrator",
 	"Hosts 更新失敗":        "Hosts update failed",
+	"本次啟動不再提醒":        "Don't remind me again in this session",
 	"更新系統 Hosts 失敗":     "Failed to update system Hosts",
 	"🚀 已成功將 %d 個網域寫入系統 Hosts 檔": "Successfully wrote %d domains to system Hosts file",
 	"備份 Hosts 失敗 (將停止更新)":       "Failed to backup Hosts (update stopped)",

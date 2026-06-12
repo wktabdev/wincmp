@@ -42,7 +42,15 @@ export default function App() {
   const [showLogs, setShowLogs] = useState(false);
   const [systemResources, setSystemResources] = useState({ cpu: 0, memory: 0 });
   const [isCollapsed, setIsCollapsed] = useState(false);
-  const [customAlert, setCustomAlert] = useState<{ isOpen: boolean; message: string; resolve?: () => void }>({ isOpen: false, message: '' });
+  const [customAlertChecked, setCustomAlertChecked] = useState(false);
+  const [customAlert, setCustomAlert] = useState<{
+    isOpen: boolean;
+    message: string;
+    title?: string;
+    showCheckbox?: boolean;
+    checkboxLabel?: string;
+    resolve?: (dontShowAgain: boolean) => void;
+  }>({ isOpen: false, message: '' });
   const [customConfirm, setCustomConfirm] = useState<{ isOpen: boolean; message: string; resolve?: (value: boolean) => void }>({ isOpen: false, message: '' });
   const [unsavedConfirm, setUnsavedConfirm] = useState<{
     isOpen: boolean;
@@ -170,9 +178,27 @@ export default function App() {
         setCustomAlert({
           isOpen: true,
           message: String(message),
+          title: t("系統提示"),
+          showCheckbox: false,
           resolve: () => {
             setCustomAlert({ isOpen: false, message: '', resolve: undefined });
             resolve();
+          }
+        });
+      });
+    };
+
+    (window as any).customAlertWithCheckbox = (message: any, title?: string, checkboxLabel?: string) => {
+      return new Promise<boolean>((resolve) => {
+        setCustomAlert({
+          isOpen: true,
+          message: String(message),
+          title: title || t("系統提示"),
+          showCheckbox: true,
+          checkboxLabel: checkboxLabel || t("不再提醒"),
+          resolve: (dontShowAgain: boolean) => {
+            setCustomAlert({ isOpen: false, message: '', resolve: undefined });
+            resolve(dontShowAgain);
           }
         });
       });
@@ -214,6 +240,26 @@ export default function App() {
   useEffect(() => {
     const handleUpdateAvailable = () => setHasUpdate(true);
     const unsubscribe = EventsOn('update_available', handleUpdateAvailable);
+    return () => { unsubscribe(); };
+  }, []);
+
+  // 訂閱 Hosts 更新失敗通知，彈出自訂 Alert (含本次啟動不再提醒選項)
+  useEffect(() => {
+    const handleHostsUpdateFailed = async (errStr: any) => {
+      if (sessionStorage.getItem('wincmp_skip_hosts_alert') === 'true') {
+        return;
+      }
+      const message = t("無法寫入 Hosts 檔案。這通常是因為權限不足。\n請嘗試以「系統管理員身分」執行 WinCMP，或者手動將網域新增至 Hosts 檔案中。") + "\n\nError: " + errStr;
+      const dontShowAgain = await (window as any).customAlertWithCheckbox(
+        message,
+        t("Hosts 更新失敗"),
+        t("本次啟動不再提醒")
+      );
+      if (dontShowAgain) {
+        sessionStorage.setItem('wincmp_skip_hosts_alert', 'true');
+      }
+    };
+    const unsubscribe = EventsOn('hosts_update_failed', handleHostsUpdateFailed);
     return () => { unsubscribe(); };
   }, []);
 
@@ -628,13 +674,34 @@ export default function App() {
           <div className="w-full max-w-sm rounded-xl overflow-hidden p-5 flex flex-col space-y-4 animate-slide-in" style={{ background: 'var(--card)', border: '1px solid var(--border)', boxShadow: 'var(--shadow-lg)' }}>
             <div className="flex items-center gap-2.5 font-bold text-sm" style={{ color: 'var(--status-info)' }}>
               <span className="text-base">🔔</span>
-              <span>{t("系統提示")}</span>
+              <span>{customAlert.title || t("系統提示")}</span>
             </div>
             <p className="text-xs leading-relaxed break-all whitespace-pre-line" style={{ color: 'var(--fg-2)' }}>{customAlert.message}</p>
+            
+            {customAlert.showCheckbox && (
+              <label className="flex items-center gap-2 text-xs select-none cursor-pointer" style={{ color: 'var(--fg-2)' }}>
+                <input
+                  type="checkbox"
+                  checked={customAlertChecked}
+                  onChange={(e) => setCustomAlertChecked(e.target.checked)}
+                  className="rounded transition duration-150"
+                  style={{
+                    accentColor: 'var(--accent)',
+                    borderColor: 'var(--border)',
+                    width: '14px',
+                    height: '14px'
+                  }}
+                />
+                <span>{customAlert.checkboxLabel || t("不再提醒")}</span>
+              </label>
+            )}
+
             <div className="flex justify-end pt-1">
               <button
                 onClick={() => {
-                  if (customAlert.resolve) customAlert.resolve();
+                  const checkedVal = customAlertChecked;
+                  setCustomAlertChecked(false);
+                  if (customAlert.resolve) customAlert.resolve(checkedVal);
                   else setCustomAlert({ isOpen: false, message: '' });
                 }}
                 className="px-4 py-1.5 rounded-lg text-xs font-semibold active:scale-[0.98] transition duration-150"
