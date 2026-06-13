@@ -40,6 +40,7 @@
   --font-size-small: 16px;
   --font-size-medium: 18px;
   --font-size-large: 20px;
+  --main-content-bg: var(--bg);
 }
 
 /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -271,30 +272,29 @@
   /* Hatching pattern for placeholders */
   --hatch-color: rgba(140, 130, 110, 0.15);
   --hatch-size: 8px;
+  --main-content-bg: transparent;
 }
 
 /* ─── Sketch theme: graph paper background ─────────────────────
- * Uses CSS `background` shorthand with !important to override
- * the inline `backgroundColor` on the app's root <div>.
- * The shorthand sets color + image atomically. */
+ * Applied only to the right main content area. Left sidebar remains solid. */
 html[data-theme="sketch"] #root>div {
-  background:
-    var(--bg) repeating-linear-gradient(0deg, transparent, transparent 99px, var(--graph-line-major) 99px, var(--graph-line-major) 100px),
-    repeating-linear-gradient(90deg, transparent, transparent 99px, var(--graph-line-major) 99px, var(--graph-line-major) 100px),
-    repeating-linear-gradient(0deg, transparent, transparent 19px, var(--graph-line) 19px, var(--graph-line) 20px),
-    repeating-linear-gradient(90deg, transparent, transparent 19px, var(--graph-line) 19px, var(--graph-line) 20px) !important;
-  background-size: auto, 100px 100px, 100px 100px, 20px 20px, 20px 20px !important;
+  background-color: var(--bg) !important;
+  background-image: none !important;
 }
 
-/* Also on html/body as fallback */
 html[data-theme="sketch"] {
   background-color: var(--bg);
+  background-image: none;
+}
+
+html[data-theme="sketch"] main {
+  background-color: var(--bg) !important;
   background-image:
     repeating-linear-gradient(0deg, transparent, transparent 99px, var(--graph-line-major) 99px, var(--graph-line-major) 100px),
     repeating-linear-gradient(90deg, transparent, transparent 99px, var(--graph-line-major) 99px, var(--graph-line-major) 100px),
     repeating-linear-gradient(0deg, transparent, transparent 19px, var(--graph-line) 19px, var(--graph-line) 20px),
-    repeating-linear-gradient(90deg, transparent, transparent 19px, var(--graph-line) 19px, var(--graph-line) 20px);
-  background-size: 100px 100px, 100px 100px, 20px 20px, 20px 20px;
+    repeating-linear-gradient(90deg, transparent, transparent 19px, var(--graph-line) 19px, var(--graph-line) 20px) !important;
+  background-size: 100px 100px, 100px 100px, 20px 20px, 20px 20px !important;
 }
 
 /* Sketch theme: card hatching for empty/chart placeholders */

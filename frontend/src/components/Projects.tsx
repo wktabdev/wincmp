@@ -306,7 +306,7 @@ export default function Projects({ highlightedProjectName, clearHighlight }: { h
   };
 
   return (
-    <div className="flex flex-col h-full overflow-hidden select-none" style={{ background: 'var(--bg)' }}>
+    <div className="flex flex-col h-full overflow-hidden select-none" style={{ background: 'var(--main-content-bg, var(--bg))' }}>
       {/* Header */}
       <div className="flex justify-between items-center px-4 py-2.5 shrink-0" style={{ borderBottom: '1px solid var(--border)', background: 'var(--bg-deep)' }}>
         <div className="flex items-center gap-2">
@@ -319,7 +319,7 @@ export default function Projects({ highlightedProjectName, clearHighlight }: { h
       </div>
 
       {/* Project List */}
-      <div className="flex-1 overflow-auto" style={{ background: 'var(--bg)' }}>
+      <div className="flex-1 overflow-auto" style={{ background: 'var(--main-content-bg, var(--bg))' }}>
         {config?.projects && config.projects.length > 0 ? (
           <table className="w-full text-left text-xs table-auto">
             <thead>

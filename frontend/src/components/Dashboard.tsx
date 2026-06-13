@@ -201,21 +201,21 @@ export default function Dashboard() {
                   background: 'var(--bg-deep)',
                   borderColor: 'var(--border)'
                 }} />
-                
+
                 <div className="space-y-3">
                   <div className="font-bold text-xs flex items-center gap-1.5 pb-1.5" style={{ color: 'var(--status-info)', borderBottom: '1px solid var(--border-soft)' }}>
                     <span>💡 {t("依賴管理指南")}</span>
                   </div>
                   <div className="space-y-2 text-[11px]" style={{ color: 'var(--fg-2)', lineHeight: '1.4' }}>
                     <p>{t("在此您可以一鍵下載並安裝 Web 開發必備的依賴元件，包含：")}</p>
-                    <ul className="space-y-1 list-disc list-inside pl-1 text-[10px]" style={{ color: 'var(--meta)' }}>
+                    <ul className="space-y-1 list-disc list-inside pl-1 text-[10px]" style={{ color: 'var(--fg)' }}>
                       <li>{t("Caddy Web 伺服器 (反向代理)")}</li>
                       <li>{t("MariaDB (本地資料庫)")}</li>
                       <li>{t("PHP-CGI (PHP 多版本運行環境)")}</li>
                       <li>{t("Composer、Node.js 等實用工具")}</li>
                     </ul>
                   </div>
-                  
+
                   <div className="flex justify-end pt-1">
                     <button onClick={(e) => { e.stopPropagation(); dismissDepGuide(); }} className="px-2.5 py-1 rounded text-[10px] font-bold text-white transition hover:opacity-90" style={{ background: 'var(--status-info)' }}>
                       {t("好的，我知道了")}
