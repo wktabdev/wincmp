@@ -414,7 +414,7 @@ export default function Projects({ highlightedProjectName, clearHighlight }: { h
                     className={isHighlighted ? 'animate-highlight' : ''}
                     style={{
                       opacity: proj.enabled ? 1 : 0.5,
-                      background: isHighlighted ? 'var(--status-info-bg)' : 'transparent',
+                      background: isHighlighted ? 'var(--status-info-bg)' : 'var(--table-row-bg, transparent)',
                       transition: 'all 0.3s',
                     }}
                   >

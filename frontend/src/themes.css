@@ -54,6 +54,7 @@
   --surface-warm: rgba(255, 255, 255, 0.05);
   --card: rgba(255, 255, 255, 0.04);
   --card-hover: rgba(255, 255, 255, 0.07);
+  --table-row-bg: transparent;
 
   /* Foreground — opacity ramp */
   --fg: #ffffff;
@@ -125,6 +126,7 @@
   --surface-warm: #f5f2ed;
   --card: #ffffff;
   --card-hover: #faf8f4;
+  --table-row-bg: transparent;
 
   /* Foreground — warm charcoal, not pure black */
   --fg: #1a1916;
@@ -196,6 +198,7 @@
   --surface-warm: #f5f0e4;
   --card: #fffef8;
   --card-hover: #fff9e8;
+  --table-row-bg: var(--card);
 
   /* Foreground — marker ink, not pure black */
   --fg: #2d2b28;
@@ -360,6 +363,7 @@ html[data-theme="sketch"] main {
   --surface-warm: rgba(255, 255, 255, 0.05);
   --card: rgba(255, 255, 255, 0.04);
   --card-hover: rgba(255, 255, 255, 0.07);
+  --table-row-bg: transparent;
 
   /* Foreground */
   --fg: #ffffff;
